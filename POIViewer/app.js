@@ -58,6 +58,10 @@ class App {
         // Bind POI Selection (List Click)
         this.uiRenderer.onPoiSelected = (poi) => {
             this.mapManager.zoomToLocation(poi.lat, poi.lng);
+            // Afficher le marqueur de sélection après le début du vol (1.6 s = durée flyTo + petite marge)
+            setTimeout(() => {
+                this.mapManager.showSelectionMarker(poi.lat, poi.lng, poi.name);
+            }, 1600);
         };
 
         this.mapManager.onPolygonCleared = () => {
@@ -68,6 +72,7 @@ class App {
             if (this.mapManager.networkGroup) this.mapManager.networkGroup.clearLayers();
             if (this.mapManager.markerGroup) this.mapManager.markerGroup.clearLayers();
             this.mapManager.clearNeighborZones();
+            this.mapManager.clearSelectionMarker();
             this.currentNetworks = [];
         };
 
@@ -480,6 +485,9 @@ class App {
                 this.uiRenderer.renderPoiDetails(poi);
                 this.uiRenderer.toggleMicroSidebar(true);
                 this.mapManager.zoomToLocation(poi.lat, poi.lng);
+                setTimeout(() => {
+                    this.mapManager.showSelectionMarker(poi.lat, poi.lng, poi.name);
+                }, 1600);
             });
 
             // Marker tooltip is fine, but click should do more now

@@ -10,6 +10,7 @@ export class MapManager {
         this.currentLayerIndex = 0;
         this.currentTileLayer = null;
         this.polygonColor = "#3388ff"; // Default color
+        this.selectionMarker = null; // Marqueur de sélection visuel
     }
 
     init() {
@@ -288,6 +289,49 @@ export class MapManager {
     clearNeighborZones() {
         if (this.neighborGroup) {
             this.neighborGroup.clearLayers();
+        }
+    }
+
+    /**
+     * Affiche un marqueur visuel distinctif sur le POI sélectionné.
+     * @param {number} lat
+     * @param {number} lng
+     * @param {string} label  Nom optionnel affiché en tooltip
+     */
+    showSelectionMarker(lat, lng, label = '') {
+        this.clearSelectionMarker();
+
+        const icon = L.divIcon({
+            className: '',
+            html: `
+                <div class="poi-selection-pin">
+                    <div class="poi-selection-pin__head"></div>
+                    <div class="poi-selection-pin__tail"></div>
+                    <div class="poi-selection-pin__pulse"></div>
+                </div>`,
+            iconSize: [28, 42],
+            iconAnchor: [14, 42],
+            tooltipAnchor: [0, -44]
+        });
+
+        this.selectionMarker = L.marker([lat, lng], { icon, zIndexOffset: 1000 });
+
+        if (label) {
+            this.selectionMarker.bindTooltip(`<b>${label}</b>`, {
+                permanent: false,
+                direction: 'top',
+                className: 'poi-selection-tooltip'
+            });
+        }
+
+        this.selectionMarker.addTo(this.map);
+    }
+
+    /** Supprime le marqueur de sélection s'il existe. */
+    clearSelectionMarker() {
+        if (this.selectionMarker) {
+            this.map.removeLayer(this.selectionMarker);
+            this.selectionMarker = null;
         }
     }
 }
