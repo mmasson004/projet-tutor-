@@ -110,7 +110,7 @@ class App {
                 this.activeZone = {
                     type: 'commune',
                     code: park.code,
-                    codeDepartement: park.codeDepartement || (park.code ? park.code.substring(0, 2) : null),
+                    codeDepartement: park.codeDepartement || (park.code ? String(park.code).substring(0, 2) : null),
                     name: park.name
                 };
                 layer = this.mapManager.drawBoundary(park.geometry);

@@ -358,13 +358,20 @@ export class ApiService {
 
     async searchCountries(query) {
         if (!query || query.length < 3) return [];
-        const url = `https://nominatim.openstreetmap.org/search?country=${encodeURIComponent(query)}&format=json&featuretype=country&limit=5`;
+        // AJOUT DE &addressdetails=1 à la fin de l'URL pour forcer Nominatim à renvoyer le code pays
+        const url = `https://nominatim.openstreetmap.org/search?country=${encodeURIComponent(query)}&format=json&featuretype=country&limit=5&addressdetails=1`;
+
         try {
             const resp = await fetch(url);
             const data = await resp.json();
+
             return data.filter(d => d.osm_type === 'relation').map(d => ({
-                name: d.display_name,
-                countryCode: d.country_code || 'fr',
+                // On nettoie le nom pour avoir juste "Italie" au lieu de "Italie, Europe"
+                name: d.name || d.display_name.split(',')[0],
+
+                // On va chercher le code pays au bon endroit (dans d.address)
+                countryCode: (d.address && d.address.country_code) ? d.address.country_code : 'fr',
+
                 areaId: 3600000000 + parseInt(d.osm_id),
                 bounds: [
                     [parseFloat(d.boundingbox[0]), parseFloat(d.boundingbox[2])],
@@ -376,6 +383,7 @@ export class ApiService {
             return [];
         }
     }
+
     async fetchParks() {
         const CACHE_KEY = `parks_cache_${this.currentCountryAreaId}`;
         const CACHE_DURATION = 24 * 60 * 60 * 1000;
