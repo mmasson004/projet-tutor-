@@ -1415,6 +1415,7 @@ export class UiRenderer {
                     showgrid: true,
                     gridcolor: 'rgba(255,255,255,0.08)',
                     zeroline: false,
+                    autorange: 'reversed',
                     tickfont: { size: 10, color: 'rgba(255,255,255,0.5)' }
                 },
                 showlegend: false
