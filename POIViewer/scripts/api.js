@@ -549,22 +549,19 @@ export class ApiService {
             } catch (error) { console.error(error); return []; }
         } else {
             // Nominatim OSM pour l'international avec polygones
-            const url = `https://nominatim.openstreetmap.org/search?city=${encodeURIComponent(query)}&country=${encodeURIComponent(this.currentCountryName)}&format=json&polygon_geojson=1&limit=10`;
+            const url = `https://nominatim.openstreetmap.org/search?city=${encodeURIComponent(query)}&country=${encodeURIComponent(this.currentCountryName)}&format=json&polygon_geojson=1&extratags=1&limit=10`;
             try {
                 const response = await fetch(url);
                 const data = await response.json();
                 return data.map(d => {
                     const bbox = d.boundingbox;
-                    const minLat = parseFloat(bbox[0]);
-                    const maxLat = parseFloat(bbox[1]);
-                    const minLon = parseFloat(bbox[2]);
-                    const maxLon = parseFloat(bbox[3]);
-
+                    // ...
                     return {
                         name: d.name || d.display_name.split(',')[0],
                         fullName: d.display_name,
                         type: 'city',
                         code: d.osm_id,
+                        wikidata: d.extratags ? d.extratags.wikidata : null, // Capture le wikidata
                         geometry: d.geojson,
                         bounds: [[minLat, minLon], [maxLat, maxLon]],
                         lat: parseFloat(d.lat),
@@ -900,6 +897,85 @@ export class ApiService {
                 await this._idbDelete(e.key);
                 console.log(`🗑️ Cache POI supprimé : ${e.key}`);
             }
+        }
+    }
+    /**
+     * Retrouve l'identifiant Wikidata d'une zone administrative active
+     */
+    async getZoneWikidataId(activeZone) {
+        if (!activeZone) return null;
+        if (activeZone.wikidata) return activeZone.wikidata; // Déjà fourni par Nominatim
+
+        let query = '';
+        // OPTIMISATION : On restreint la recherche à la zone du pays (area.searchArea) pour éviter le timeout
+        if (activeZone.type === 'commune' && activeZone.code && activeZone.code.length >= 4) {
+            query = `[out:json][timeout:10];area(${this.currentCountryAreaId})->.searchArea;relation["boundary"="administrative"]["ref:INSEE"="${activeZone.code}"](area.searchArea);out tags;`;
+        } else if (activeZone.type === 'dept' || activeZone.type === 'region') {
+            query = `[out:json][timeout:10];area(${this.currentCountryAreaId})->.searchArea;relation["boundary"="administrative"]["ref:INSEE"="${activeZone.code}"](area.searchArea);out tags;`;
+        }
+
+        if (!query) return null;
+        try {
+            const response = await fetch(this.overpassUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: `data=${encodeURIComponent(query)}`
+            });
+
+            // On vérifie que la réponse est OK avant de tenter de lire du JSON
+            if (!response.ok) {
+                console.warn(`⚠️ Overpass a refusé la requête (Statut ${response.status})`);
+                return null;
+            }
+
+            const data = await response.json();
+            if (data.elements && data.elements.length > 0) {
+                const el = data.elements.find(e => e.tags && e.tags.wikidata);
+                return el ? el.tags.wikidata : null;
+            }
+        } catch (e) {
+            console.error("Erreur getZoneWikidataId:", e);
+        }
+        return null;
+    }
+
+    /**
+     * Récupère l'historique de population depuis Wikidata (Propriété P1082 + Date P585)
+     */
+    async fetchPopulationHistory(wikidataId) {
+        if (!wikidataId) return null;
+        const url = `https://www.wikidata.org/w/api.php?action=wbgetentities&ids=${wikidataId}&format=json&props=claims&origin=*`;
+        try {
+            const response = await fetch(url);
+            const data = await response.json();
+            const entity = data.entities[wikidataId];
+            if (!entity || !entity.claims || !entity.claims.P1082) return null;
+
+            const popClaims = entity.claims.P1082;
+            const history = [];
+
+            popClaims.forEach(claim => {
+                const pop = claim.mainsnak?.datavalue?.value?.amount;
+                const date = claim.qualifiers?.P585?.[0]?.datavalue?.value?.time; // Point in time
+
+                if (pop && date) {
+                    const yearMatch = date.match(/^\+?(\d{4})/);
+                    if (yearMatch) {
+                        history.push({
+                            year: parseInt(yearMatch[1], 10),
+                            population: parseInt(pop.replace(/\D/g, ''), 10)
+                        });
+                    }
+                }
+            });
+
+            if (history.length === 0) return null;
+            // Trier par année croissante
+            history.sort((a, b) => a.year - b.year);
+            return history;
+        } catch (e) {
+            console.error("Erreur fetchPopulationHistory:", e);
+            return null;
         }
     }
 }

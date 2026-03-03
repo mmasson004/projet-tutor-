@@ -339,4 +339,48 @@ export class MapManager {
             this.selectionMarker = null;
         }
     }
+
+    // ── Heatmap layers ────────────────────────────────────────────────────
+
+    /**
+     * Met à jour les heatmaps de densité sur la carte.
+     * @param {Object} heatData  { accommodation: [[lat,lng,intensity],...], pedestrian: [...], cycling: [...] }
+     * @param {Object} visibility  { accommodation: bool, pedestrian: bool, cycling: bool }
+     */
+    updateHeatmapLayers(heatData, visibility) {
+        // Supprimer les anciennes couches
+        this.clearHeatmapLayers();
+
+        if (!heatData) return;
+
+        const configs = {
+            accommodation: { radius: 25, blur: 20, maxZoom: 17, gradient: { 0.2: '#c4b5fd', 0.5: '#a78bfa', 0.8: '#7c3aed', 1.0: '#5b21b6' } },
+            pedestrian: { radius: 20, blur: 18, maxZoom: 17, gradient: { 0.2: '#a7f3d0', 0.5: '#34d399', 0.8: '#059669', 1.0: '#065f46' } },
+            cycling: { radius: 20, blur: 18, maxZoom: 17, gradient: { 0.2: '#bfdbfe', 0.5: '#60a5fa', 0.8: '#2563eb', 1.0: '#1e3a8a' } }
+        };
+
+        if (!this._heatLayers) this._heatLayers = {};
+
+        for (const [key, points] of Object.entries(heatData)) {
+            if (!visibility[key] || !points || points.length === 0) continue;
+            const cfg = configs[key] || configs.accommodation;
+            this._heatLayers[key] = L.heatLayer(points, {
+                radius: cfg.radius,
+                blur: cfg.blur,
+                maxZoom: cfg.maxZoom,
+                gradient: cfg.gradient,
+                minOpacity: 0.35
+            }).addTo(this.map);
+        }
+    }
+
+    /** Supprime toutes les couches heatmap existantes */
+    clearHeatmapLayers() {
+        if (this._heatLayers) {
+            for (const layer of Object.values(this._heatLayers)) {
+                this.map.removeLayer(layer);
+            }
+            this._heatLayers = {};
+        }
+    }
 }

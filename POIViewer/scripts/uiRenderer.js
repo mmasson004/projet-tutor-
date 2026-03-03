@@ -850,11 +850,179 @@ export class UiRenderer {
         this.poiList.innerHTML = '<p class="empty-state">Sélectionnez une zone pour voir les lieux.</p>';
         this.toggleMicroSidebar(false);
     }
+    generateDemographicsKPI(history, zoneName) {
+        if (!history || history.length === 0) return '';
 
-    renderMacroStats(pois) {
+        const latest = history[history.length - 1];
+        let variationHtml = '';
+
+        if (history.length > 1) {
+            // Comparer avec l'année précédente disponible
+            const previous = history[history.length - 2];
+            const diff = latest.population - previous.population;
+            const percent = ((diff / previous.population) * 100).toFixed(2);
+            const isPositive = diff >= 0;
+            const color = isPositive ? '#34d399' : '#f87171'; // Vert ou Rouge
+            const sign = isPositive ? '+' : '';
+
+            variationHtml = `
+                <div style="text-align: right;">
+                    <div style="font-size: 1.1rem; color: ${color}; font-weight: bold;">${sign}${percent}%</div>
+                    <div style="font-size: 0.75rem; color: var(--color-text-muted);">depuis ${previous.year}</div>
+                </div>
+            `;
+        }
+
+        return `
+            <div class="kpi-card glass-panel" style="background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 12px; padding: 16px; margin-bottom: 16px; display: flex; align-items: center; justify-content: space-between;">
+                <div>
+                    <div style="font-size: 0.8rem; color: var(--color-text-muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px;">👥 Résidents (${latest.year})</div>
+                    <div style="font-size: 1.8rem; font-weight: 700; color: #fff; line-height: 1;">${latest.population.toLocaleString('fr-FR')}</div>
+                    <div style="font-size: 0.8rem; color: var(--color-primary); margin-top: 4px;">${zoneName}</div>
+                </div>
+                ${variationHtml}
+            </div>
+        `;
+    }
+    renderMacroStats(pois, demoHtml = '', networks = [], areaKm2 = 0) {
         const total = pois.length;
+
+        // ── Calcul des KPI hébergement & sentiers (toujours, même si pois filtrés = 0) ──
+        const accommodationTypes = new Set([
+            'hotel', 'guest_house', 'hostel', 'camp_site', 'chalet',
+            'alpine_hut', 'apartment', 'motel', 'caravan_site', 'shelter'
+        ]);
+        let accommodationCount = 0;
+        let totalBeds = 0;
+        let totalRooms = 0;
+        pois.forEach(p => {
+            if (p.category === 'accommodation' || accommodationTypes.has(p.type)) {
+                accommodationCount++;
+                if (p.tags && p.tags.beds) totalBeds += parseInt(p.tags.beds, 10) || 0;
+                if (p.tags && p.tags.rooms) totalRooms += parseInt(p.tags.rooms, 10) || 0;
+            }
+        });
+
+        // Sentiers piétons (inclut randonnée) / vélo depuis networks
+        const pedestrianTypes = new Set(['path', 'footway', 'pedestrian', 'living_street']);
+        const cyclingTypes = new Set(['cycleway']);
+        let pedestrianTrailCount = 0;
+        let cyclingTrailCount = 0;
+        networks.forEach(net => {
+            const t = net.type;
+            const route = net.relationRoute;
+            // Piéton = sentiers classiques + randonnée (hiking/foot/sac_scale)
+            if (pedestrianTypes.has(t) || route === 'hiking' || route === 'foot' || (net.tags && net.tags.sac_scale)) {
+                pedestrianTrailCount++;
+            }
+            // Vélo
+            if (cyclingTypes.has(t) || route === 'bicycle' || route === 'mtb') {
+                cyclingTrailCount++;
+            }
+        });
+
+        // ── KPI Cards HTML ─────────────────────────────────────────────────
+        const kpiCardStyle = `background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);border-radius:12px;padding:14px 16px;display:flex;align-items:center;justify-content:space-between;`;
+        const kpiValueStyle = `font-size:1.6rem;font-weight:700;color:#fff;line-height:1;`;
+        const kpiLabelStyle = `font-size:0.75rem;color:var(--color-text-muted);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:4px;`;
+        const kpiSubStyle = `font-size:0.8rem;color:var(--color-text-muted);margin-top:4px;`;
+
+        const kpiCardsHtml = `
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;">
+                <div class="kpi-card glass-panel" style="${kpiCardStyle}border-color:rgba(167,139,250,0.35);background:rgba(167,139,250,0.08);">
+                    <div>
+                        <div style="${kpiLabelStyle}">🏨 Hébergements</div>
+                        <div style="${kpiValueStyle}">${accommodationCount.toLocaleString('fr-FR')}</div>
+                        <div style="${kpiSubStyle}">dans la zone OSM</div>
+                    </div>
+                </div>
+                <div class="kpi-card glass-panel" style="${kpiCardStyle}border-color:rgba(251,191,36,0.35);background:rgba(251,191,36,0.08);">
+                    <div>
+                        <div style="${kpiLabelStyle}">🛏️ Capacité d'accueil</div>
+                        <div style="${kpiValueStyle}">${totalBeds.toLocaleString('fr-FR')} <span style="font-size:0.85rem;font-weight:400;color:var(--color-text-muted);">lits</span></div>
+                        <div style="${kpiSubStyle}">🚪 ${totalRooms.toLocaleString('fr-FR')} chambres</div>
+                    </div>
+                </div>
+                <div class="kpi-card glass-panel" style="${kpiCardStyle}border-color:rgba(5,150,105,0.35);background:rgba(5,150,105,0.08);">
+                    <div>
+                        <div style="${kpiLabelStyle}">🚶 Sentiers piétons</div>
+                        <div style="${kpiValueStyle}">${pedestrianTrailCount.toLocaleString('fr-FR')}</div>
+                        <div style="${kpiSubStyle}">chemins & randos confondus</div>
+                    </div>
+                </div>
+                <div class="kpi-card glass-panel" style="${kpiCardStyle}border-color:rgba(59,130,246,0.35);background:rgba(59,130,246,0.08);">
+                    <div>
+                        <div style="${kpiLabelStyle}">🚴 Pistes cyclables</div>
+                        <div style="${kpiValueStyle}">${cyclingTrailCount.toLocaleString('fr-FR')}</div>
+                        <div style="${kpiSubStyle}">voies dans la zone</div>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        // ── Densité Heatmap ────────────────────────────────────────────────
+        let densityHtml = '';
+        if (areaKm2 > 0) {
+            const accomDensity = accommodationCount / areaKm2;
+            const pedDensity = pedestrianTrailCount / areaKm2;
+            const cycleDensity = cyclingTrailCount / areaKm2;
+
+            // Fonction pour limiter la barre entre 0 et 100%
+            // On utilise un seuil adaptatif : le max des 3 densités or 1 minimum
+            const maxDensity = Math.max(accomDensity, pedDensity, cycleDensity, 0.1);
+
+            const densityBar = (label, emoji, value, color, colorRgb) => {
+                const pct = Math.min((value / maxDensity) * 100, 100);
+                const formatted = value < 0.01 ? value.toExponential(1) : value.toFixed(2);
+                return `
+                    <div style="margin-bottom:10px;">
+                        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px;">
+                            <span style="font-size:0.8rem;color:#fff;">${emoji} ${label}</span>
+                            <span style="font-size:0.85rem;font-weight:600;color:${color};">${formatted} <span style="font-size:0.7rem;font-weight:400;color:var(--color-text-muted);">/ km²</span></span>
+                        </div>
+                        <div style="background:rgba(255,255,255,0.08);border-radius:6px;height:8px;overflow:hidden;">
+                            <div style="height:100%;width:${pct}%;border-radius:6px;background:linear-gradient(90deg, rgba(${colorRgb},0.4), rgba(${colorRgb},1));transition:width 0.6s ease;"></div>
+                        </div>
+                    </div>`;
+            };
+
+            densityHtml = `
+                <div id="density-heatmap-panel" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:14px 16px;margin-bottom:16px;">
+                    <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:12px;">
+                        <span style="font-size:0.8rem;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:0.04em;">🗺️ Densité par km²</span>
+                        <span style="font-size:0.75rem;color:var(--color-text-muted);">Surface : ${areaKm2.toFixed(1)} km²</span>
+                    </div>
+                    ${densityBar('Hébergements', '🏨', accomDensity, '#a78bfa', '167,139,250')}
+                    ${densityBar('Sentiers piétons', '🚶', pedDensity, '#34d399', '5,150,105')}
+                    ${densityBar('Pistes cyclables', '🚴', cycleDensity, '#60a5fa', '59,130,246')}
+                    <div style="margin-top:12px;padding-top:10px;border-top:1px solid rgba(255,255,255,0.08);">
+                        <div style="font-size:0.75rem;font-weight:600;color:var(--color-text-muted);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:8px;">🔥 Heatmap sur la carte</div>
+                        <div style="display:flex;gap:12px;flex-wrap:wrap;">
+                            <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:0.8rem;color:#fff;">
+                                <input type="checkbox" class="heatmap-toggle" data-heat="accommodation" checked style="accent-color:#a78bfa;">
+                                <span style="width:8px;height:8px;border-radius:50%;background:#a78bfa;display:inline-block;"></span>
+                                Héberg.
+                            </label>
+                            <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:0.8rem;color:#fff;">
+                                <input type="checkbox" class="heatmap-toggle" data-heat="pedestrian" checked style="accent-color:#34d399;">
+                                <span style="width:8px;height:8px;border-radius:50%;background:#34d399;display:inline-block;"></span>
+                                Piétons
+                            </label>
+                            <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:0.8rem;color:#fff;">
+                                <input type="checkbox" class="heatmap-toggle" data-heat="cycling" checked style="accent-color:#60a5fa;">
+                                <span style="width:8px;height:8px;border-radius:50%;background:#60a5fa;display:inline-block;"></span>
+                                Vélo
+                            </label>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        // Si aucun POI après filtrage, afficher quand même les KPI + densité + message vide
         if (total === 0) {
-            this.macroStats.innerHTML = `<div class="stat-item empty"><span class="stat-value">--</span><span class="stat-label">Aucun lieu trouvé</span></div>`;
+            this.macroStats.innerHTML = demoHtml + kpiCardsHtml + densityHtml + `<div class="stat-item empty"><span class="stat-value">--</span><span class="stat-label">Aucun lieu trouvé</span></div>`;
+            this._bindHeatmapToggles();
             return;
         }
 
@@ -932,7 +1100,8 @@ export class UiRenderer {
 
         const config = { responsive: true, displayModeBar: false };
 
-        this.macroStats.innerHTML = '';
+        this.macroStats.innerHTML = demoHtml + kpiCardsHtml + densityHtml; // Injecte démographie + KPI + densité en premier
+        this._bindHeatmapToggles();
 
         // --- LEGEND ADDITION ---
         const legendDiv = document.createElement('div');
@@ -1022,6 +1191,19 @@ export class UiRenderer {
 
         Plotly.newPlot(chartDiv, data, layout, config);
         this.lastPois = pois;
+    }
+
+    /** Lie les checkboxes heatmap après injection dans le DOM */
+    _bindHeatmapToggles() {
+        const panel = document.getElementById('density-heatmap-panel');
+        if (!panel) return;
+        panel.querySelectorAll('.heatmap-toggle').forEach(cb => {
+            cb.addEventListener('change', () => {
+                if (this.onHeatmapToggle) {
+                    this.onHeatmapToggle(cb.dataset.heat, cb.checked);
+                }
+            });
+        });
     }
 
     renderMicroList(pois) {

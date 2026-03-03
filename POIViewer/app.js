@@ -12,6 +12,8 @@ class App {
         this.currentNetworks = [];
         this.pathWeight = 1;
         this.activeZone = null; // Contexte de la zone administrative active
+        this.currentAreaKm2 = 0;
+        this.heatmapVisibility = { accommodation: true, pedestrian: true, cycling: true };
     }
 
     init() {
@@ -58,7 +60,7 @@ class App {
         this.uiRenderer.onSubCategoryFilterChange = () => {
             if (this.currentPOIs && this.currentPOIs.length > 0) {
                 const filtered = this.getFilteredPOIs();
-                this.uiRenderer.renderMacroStats(filtered);
+                this.uiRenderer.renderMacroStats(filtered, '', this.currentNetworks, this.currentAreaKm2);
                 this.uiRenderer.renderMicroList(filtered);
                 this.addMarkersToMap(filtered);
             }
@@ -82,6 +84,7 @@ class App {
             if (this.mapManager.markerGroup) this.mapManager.markerGroup.clearLayers();
             this.mapManager.clearNeighborZones();
             this.mapManager.clearSelectionMarker();
+            this.mapManager.clearHeatmapLayers();
             this.currentNetworks = [];
         };
 
@@ -116,7 +119,8 @@ class App {
                     type: 'commune',
                     code: park.code,
                     codeDepartement: park.codeDepartement || (park.code ? String(park.code).substring(0, 2) : null),
-                    name: park.name
+                    name: park.name,
+                    wikidata: park.wikidata || null // Capture le wikidata pour la démographie
                 };
                 layer = this.mapManager.drawBoundary(park.geometry);
             } else if (park.relationId) {
@@ -161,6 +165,14 @@ class App {
 
         const latLngs = this.mapManager.getBoundsFromLayer(layer);
 
+        // Calcul de la surface de la zone en km²
+        try {
+            const areaM2 = L.GeometryUtil.geodesicArea(latLngs);
+            this.currentAreaKm2 = areaM2 / 1e6;
+        } catch (e) {
+            this.currentAreaKm2 = 0;
+        }
+
         // Retrieve selected categories from the new menu
         const selectedCategories = this.uiRenderer.getSelectedCategories();
 
@@ -171,7 +183,7 @@ class App {
                 this.currentPOIs = pois;
                 this.currentNetworks = networks;
 
-                // Render Networks
+                // Render Networks (Affiche les tracés immédiatement)
                 this.renderNetworks(networks);
 
                 // Populate sub-category checkboxes from loaded POIs
@@ -180,14 +192,44 @@ class App {
                 // Get filtered POIs (respecting sub-category exclusions)
                 const filteredPOIs = this.getFilteredPOIs();
 
-                // Update UI (Macro Stats)
-                this.uiRenderer.renderMacroStats(filteredPOIs);
+                // Add Markers to Map (Affiche les POIs sur la carte immédiatement)
+                this.addMarkersToMap(filteredPOIs);
 
-                // Update UI (Micro List)
+                // Update UI (Macro Stats) - Sans la démographie pour l'instant
+                // Update UI (Macro Stats) - Sans la démographie pour l'instant
+                this.uiRenderer.renderMacroStats(filteredPOIs, '', networks, this.currentAreaKm2);
+
+                // Construire et afficher les heatmaps
+                this.updateHeatmaps();
+
+                // Connecter le toggle heatmap (appelé quand l'utilisateur coche/décoche)
+                this.uiRenderer.onHeatmapToggle = (key, checked) => {
+                    this.heatmapVisibility[key] = checked;
+                    this.updateHeatmaps();
+                };
+
+                // NOUVEAU : On met à jour la liste du panneau de droite !
                 this.uiRenderer.renderMicroList(filteredPOIs);
 
-                // Add Markers to Map (Micro support)
-                this.addMarkersToMap(filteredPOIs);
+                // --- CHARGEMENT ASYNCHRONE DE LA DÉMOGRAPHIE (Ne bloque plus la carte) ---
+                if (this.activeZone) {
+                    if (this.activeZone.demoHtml) {
+                        // Si déjà en cache, on met à jour le panneau
+                        this.uiRenderer.renderMacroStats(filteredPOIs, this.activeZone.demoHtml, this.currentNetworks, this.currentAreaKm2);
+                    } else {
+                        // On lance la requête en tâche de fond (sans le mot "await")
+                        this.apiService.getZoneWikidataId(this.activeZone).then(async wikidataId => {
+                            if (wikidataId) {
+                                this.activeZone.wikidata = wikidataId;
+                                const history = await this.apiService.fetchPopulationHistory(wikidataId);
+                                const demoHtml = this.uiRenderer.generateDemographicsKPI(history, this.activeZone.name);
+                                this.activeZone.demoHtml = demoHtml;
+                                // On met à jour l'interface seulement quand la donnée est prête
+                                this.uiRenderer.renderMacroStats(this.getFilteredPOIs(), demoHtml, this.currentNetworks, this.currentAreaKm2);
+                            }
+                        }).catch(e => console.warn("Erreur chargement démographie:", e));
+                    }
+                }
 
                 // Show Sidebar
                 if (filteredPOIs.length > 0) {
@@ -212,6 +254,50 @@ class App {
         const excluded = this.uiRenderer.getExcludedSubCategories();
         if (excluded.size === 0) return this.currentPOIs;
         return this.currentPOIs.filter(p => !excluded.has(p.type));
+    }
+
+    /** Construit les données de coordonnées pour les 3 heatmaps */
+    buildHeatmapData() {
+        const accommodationTypes = new Set([
+            'hotel', 'guest_house', 'hostel', 'camp_site', 'chalet',
+            'alpine_hut', 'apartment', 'motel', 'caravan_site', 'shelter'
+        ]);
+        const pedestrianTypes = new Set(['path', 'footway', 'pedestrian', 'living_street']);
+        const cyclingTypes = new Set(['cycleway']);
+
+        const accommodation = [];
+        const pedestrian = [];
+        const cycling = [];
+
+        // Points d'hébergement depuis les POIs
+        this.currentPOIs.forEach(p => {
+            if (p.category === 'accommodation' || accommodationTypes.has(p.type)) {
+                accommodation.push([p.lat, p.lng, 1]);
+            }
+        });
+
+        // Points de sentiers depuis les networks (milieu du tracé)
+        this.currentNetworks.forEach(net => {
+            if (!net.geometry || net.geometry.length === 0) return;
+            const mid = net.geometry[Math.floor(net.geometry.length / 2)];
+            const t = net.type;
+            const route = net.relationRoute;
+
+            if (pedestrianTypes.has(t) || route === 'hiking' || route === 'foot' || (net.tags && net.tags.sac_scale)) {
+                pedestrian.push([mid.lat, mid.lon, 1]);
+            }
+            if (cyclingTypes.has(t) || route === 'bicycle' || route === 'mtb') {
+                cycling.push([mid.lat, mid.lon, 1]);
+            }
+        });
+
+        return { accommodation, pedestrian, cycling };
+    }
+
+    /** Met à jour les heatmaps sur la carte */
+    updateHeatmaps() {
+        const heatData = this.buildHeatmapData();
+        this.mapManager.updateHeatmapLayers(heatData, this.heatmapVisibility);
     }
 
     renderNetworks(networks) {
