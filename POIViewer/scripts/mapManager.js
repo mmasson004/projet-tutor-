@@ -150,42 +150,44 @@ export class MapManager {
     getBoundsFromLayer(layer) {
         if (!layer) return null;
 
-        let polygon = null;
+        let polygons = [];
         if (layer instanceof L.Polygon || layer instanceof L.Rectangle) {
-            polygon = layer;
+            polygons.push(layer);
         } else if (layer instanceof L.FeatureGroup || layer instanceof L.GeoJSON) {
-            // Find first polygon layer
+            // Find all polygon layers
             layer.eachLayer((l) => {
-                if (!polygon && (l instanceof L.Polygon || l instanceof L.Rectangle)) {
-                    polygon = l;
+                if (l instanceof L.Polygon || l instanceof L.Rectangle) {
+                    polygons.push(l);
                 }
             });
         }
 
-        if (polygon) {
-            const latlngs = polygon.getLatLngs();
-            // Leaflet Polygons:
-            // - Simple polygon: [ [lat,lng], [lat,lng]... ] -> actually wrapped in one array: [ [ [lat,lng]... ] ]
-            // - With holes: [ [outer], [hole], ... ]
-            // - MultiPolygon: [ [[outer], [hole]], [[outer]...] ]
+        if (polygons.length > 0) {
+            const allRings = [];
 
-            // We want the outer ring of the main polygon
-            if (Array.isArray(latlngs) && latlngs.length > 0) {
-                if (Array.isArray(latlngs[0]) && latlngs[0].length > 0) {
-                    // Check if it's directly an array of LatLng objects (L.LatLng or {lat, lng})
-                    // Leaflet usually nests: [ [LatLng, LatLng...] ] for simple polygon
-                    if ('lat' in latlngs[0] || ('lat' in latlngs[0][0])) {
-                        // It is [ [LatLng...] ] or [ LatLng... ]
-                        // We want the flat array of coordinates
-                        return Array.isArray(latlngs[0]) ? latlngs[0] : latlngs;
-                    }
-                    if (Array.isArray(latlngs[0][0])) {
-                        // MultiPolygon structure: [ [ [LatLng...] ] ]
-                        return latlngs[0][0];
+            polygons.forEach(p => {
+                const latlngs = p.getLatLngs();
+                // Leaflet usually nests simple polygons: [ [LatLng...] ] or [ LatLng... ]
+                if (Array.isArray(latlngs) && latlngs.length > 0) {
+                    if (Array.isArray(latlngs[0]) && latlngs[0].length > 0) {
+                        if ('lat' in latlngs[0] || ('lat' in latlngs[0][0])) {
+                            // Single polygon or array of points
+                            allRings.push(Array.isArray(latlngs[0]) ? latlngs[0] : latlngs);
+                        } else if (Array.isArray(latlngs[0][0])) {
+                            // MultiPolygon structure: [ [ [LatLng...] ], ... ]
+                            latlngs.forEach(multiRing => {
+                                if (Array.isArray(multiRing) && multiRing.length > 0 && Array.isArray(multiRing[0])) {
+                                    allRings.push(multiRing[0]); // Push the outer ring
+                                }
+                            });
+                        }
+                    } else {
+                        allRings.push(latlngs);
                     }
                 }
-            }
-            return latlngs; // Fallback
+            });
+
+            return allRings.length > 0 ? allRings : null;
         }
         return null;
     }

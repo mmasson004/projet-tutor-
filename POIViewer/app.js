@@ -225,9 +225,17 @@ class App {
 
         // Calcul de la surface de la zone en km²
         try {
-            const areaM2 = L.GeometryUtil.geodesicArea(latLngs);
+            let areaM2 = 0;
+            if (latLngs && latLngs.length > 0 && Array.isArray(latLngs[0])) {
+                latLngs.forEach(ring => {
+                    areaM2 += L.GeometryUtil.geodesicArea(ring);
+                });
+            } else if (latLngs && latLngs.length > 0) {
+                areaM2 = L.GeometryUtil.geodesicArea(latLngs);
+            }
             this.currentAreaKm2 = areaM2 / 1e6;
         } catch (e) {
+            console.warn("Calcul de surface échoué:", e);
             this.currentAreaKm2 = 0;
         }
 

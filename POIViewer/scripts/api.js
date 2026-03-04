@@ -53,16 +53,49 @@ export class ApiService {
             console.warn("Lecture cache IndexedDB échouée:", e);
         }
 
-        // Convert Leaflet LatLngs to Overpass Poly String
-        const points = [...latLngs];
-        if (points.length > 0) {
-            const first = points[0];
-            const last = points[points.length - 1];
-            if (first.lat !== last.lat || first.lng !== last.lng) {
-                points.push(first);
+        // Handle both simple arrays [pt] and multi-polygon arrays [[pt], [pt]]
+        const rings = (latLngs && latLngs.length > 0 && Array.isArray(latLngs[0]) && !('lat' in latLngs[0])) ? latLngs : [latLngs];
+
+        // ANTI-PLANTAGE "400 Bad Request" (XML) :
+        // Si la région est composées de centaines de micro-îles (MultiPolygone massif),
+        // On ne conserve que les 5 plus gros morceaux pour interroger Overpass.
+        const topRings = [...rings]
+            .sort((a, b) => b.length - a.length)
+            .slice(0, 5);
+
+        // Convert Leaflet LatLngs to Overpass Poly Strings array
+        let polyCoordsArray = topRings.map(ring => {
+            let points = [...ring];
+
+            // ANTI-PLANTAGE "413 Request Entity Too Large" :
+            // Overpass refuse les requêtes dont le body POST est trop massif.
+            // Si la frontière géographique téléchargée a des dizaines de milliers de points
+            // on sous-échantillonne pour diviser drastiquement le poids du string géométrique.
+            const maxPointsPerRing = 150;
+            if (points.length > maxPointsPerRing) {
+                const step = Math.ceil(points.length / maxPointsPerRing);
+                points = points.filter((_, index) => index % step === 0);
             }
+
+            if (points.length > 0) {
+                const first = points[0];
+                const last = points[points.length - 1];
+                if (first.lat !== last.lat || first.lng !== last.lng) {
+                    points.push(first);
+                }
+            }
+
+            // Un polygone valide pour Overpass nécessite au moins 3 points distincts
+            if (points.length >= 3) {
+                return points.map(pt => `${pt.lat} ${pt.lng}`).join(' ');
+            }
+            return null;
+        }).filter(Boolean);
+
+        if (polyCoordsArray.length === 0) {
+            console.warn("⚠️ Polygones invalides ou trop petits, requête annulée.");
+            return { pois: [], networks: [] };
         }
-        const polyCoords = points.map(pt => `${pt.lat} ${pt.lng}`).join(' ');
 
         // Define the network fetch operation as a single Promise we can share
         const fetchPromise = (async () => {
@@ -90,12 +123,13 @@ export class ApiService {
             const allKeys = new Set();
             Object.values(categoryToKeys).flat().forEach(k => allKeys.add(k));
             const keysRegex = Array.from(allKeys).join('|');
-            const nodeQuery = `node[~"^(${keysRegex})$"~"."](poly:"${polyCoords}");`;
 
-            const query = `
-                [out:json][timeout:60];
-                (
-                  ${nodeQuery}
+            // Build queries for multiple polygons (if MultiPolygon)
+            const nodeQuery = polyCoordsArray.map(polyCoords =>
+                `node[~"^(${keysRegex})$"~"."](poly:"${polyCoords}");`
+            ).join('\n              ');
+
+            const wayQuery = polyCoordsArray.map(polyCoords => `
                   way["highway"](poly:"${polyCoords}");
                   way["railway"](poly:"${polyCoords}");
                   way["aerialway"](poly:"${polyCoords}");
@@ -108,6 +142,13 @@ export class ApiService {
                   relation["landuse"="reservoir"](poly:"${polyCoords}");
                   way["landuse"="basin"](poly:"${polyCoords}");
                   relation["route"~"hiking|foot|bicycle|mtb|ski|piste"](poly:"${polyCoords}");
+            `).join('');
+
+            const query = `
+                [out:json][timeout:60];
+                (
+                  ${nodeQuery}
+                  ${wayQuery}
                 );
                 out geom;
             `;
@@ -824,9 +865,12 @@ export class ApiService {
      * Les coordonnées sont arrondies à 2 décimales pour tolérer les micro-écarts.
      */
     _buildPOICacheKey(latLngs) {
-        const coordStr = latLngs
-            .map(pt => `${pt.lat.toFixed(2)},${pt.lng.toFixed(2)}`)
-            .join('|');
+        const rings = (latLngs && latLngs.length > 0 && Array.isArray(latLngs[0]) && !('lat' in latLngs[0])) ? latLngs : [latLngs];
+
+        const coordStr = rings
+            .map(ring => ring.map(pt => `${pt.lat.toFixed(2)},${pt.lng.toFixed(2)}`).join('|'))
+            .join('||');
+
         // Hash simple (djb2) pour garder la clé courte
         let hash = 5381;
         for (let i = 0; i < coordStr.length; i++) {
