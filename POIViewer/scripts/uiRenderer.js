@@ -850,39 +850,108 @@ export class UiRenderer {
         this.poiList.innerHTML = '<p class="empty-state">Sélectionnez une zone pour voir les lieux.</p>';
         this.toggleMicroSidebar(false);
     }
-    generateDemographicsKPI(history, zoneName) {
-        if (!history || history.length === 0) return '';
+    generateDemographicsKPI(history, osmPopulation, zoneName) {
+        if ((!history || history.length === 0) && !osmPopulation) return '';
 
-        const latest = history[history.length - 1];
         let variationHtml = '';
+        let sparklineHtml = '';
+        let displayedPopulation = '';
+        let yearText = '';
 
-        if (history.length > 1) {
-            // Comparer avec l'année précédente disponible
-            const previous = history[history.length - 2];
-            const diff = latest.population - previous.population;
-            const percent = ((diff / previous.population) * 100).toFixed(2);
-            const isPositive = diff >= 0;
-            const color = isPositive ? '#34d399' : '#f87171'; // Vert ou Rouge
-            const sign = isPositive ? '+' : '';
+        // Stocker l'historique pour l'utiliser lors du tracé du sparkline plus tard
+        this.currentDemoHistory = history;
 
+        if (history && history.length > 0) {
+            const latest = history[history.length - 1];
+            displayedPopulation = latest.population.toLocaleString('fr-FR');
+            yearText = `(${latest.year})`;
+
+            if (history.length > 1) {
+                // Comparer avec l'année précédente disponible
+                const previous = history[history.length - 2];
+                const diff = latest.population - previous.population;
+                const percent = ((diff / previous.population) * 100).toFixed(2);
+                const isPositive = diff >= 0;
+                const color = isPositive ? '#34d399' : '#f87171'; // Vert ou Rouge
+                const sign = isPositive ? '+' : '';
+
+                variationHtml = `
+                    <div style="text-align: right; margin-left: auto;">
+                        <div style="font-size: 1.1rem; color: ${color}; font-weight: bold;">${sign}${percent}%</div>
+                        <div style="font-size: 0.75rem; color: var(--color-text-muted);">depuis ${previous.year}</div>
+                    </div>
+                `;
+
+                // Préparer le conteneur pour le sparkline
+                sparklineHtml = `<div id="sparkline-container" style="width: 120px; height: 50px; margin-left: 20px;"></div>`;
+            }
+        } else if (osmPopulation) {
+            displayedPopulation = osmPopulation.toLocaleString('fr-FR');
+            yearText = `(Source OpenStreetMap)`;
             variationHtml = `
-                <div style="text-align: right;">
-                    <div style="font-size: 1.1rem; color: ${color}; font-weight: bold;">${sign}${percent}%</div>
-                    <div style="font-size: 0.75rem; color: var(--color-text-muted);">depuis ${previous.year}</div>
-                </div>
-            `;
+                <div style="text-align: right; margin-left: auto; font-size: 0.75rem; color: var(--color-text-muted); opacity: 0.8; font-style: italic;">
+                    Aucun historique<br>disponible
+                </div>`;
+        } else {
+            return '';
         }
 
         return `
-            <div class="kpi-card glass-panel" style="background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 12px; padding: 16px; margin-bottom: 16px; display: flex; align-items: center; justify-content: space-between;">
-                <div>
-                    <div style="font-size: 0.8rem; color: var(--color-text-muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px;">👥 Résidents (${latest.year})</div>
-                    <div style="font-size: 1.8rem; font-weight: 700; color: #fff; line-height: 1;">${latest.population.toLocaleString('fr-FR')}</div>
+            <div class="kpi-card glass-panel" style="background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 12px; padding: 16px; margin-bottom: 16px; display: flex; align-items: center;">
+                <div style="flex-shrink: 0;">
+                    <div style="font-size: 0.8rem; color: var(--color-text-muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px;">👥 Résidents <span style="font-size:0.75rem">${yearText}</span></div>
+                    <div style="font-size: 1.8rem; font-weight: 700; color: #fff; line-height: 1;">${displayedPopulation}</div>
                     <div style="font-size: 0.8rem; color: var(--color-primary); margin-top: 4px;">${zoneName}</div>
                 </div>
+                ${sparklineHtml}
                 ${variationHtml}
             </div>
         `;
+    }
+
+    /**
+     * Rend le graphique type "Sparkline" à l'intérieur du conteneur injecté par \`generateDemographicsKPI\`.
+     */
+    renderSparkline() {
+        const container = document.getElementById('sparkline-container');
+        if (!container || !this.currentDemoHistory || this.currentDemoHistory.length < 2) return;
+
+        const xValues = this.currentDemoHistory.map(h => h.year);
+        const yValues = this.currentDemoHistory.map(h => h.population);
+
+        // Déterminer la coloration de la ligne selon la tendance globale (dernière vs première)
+        const firstVal = yValues[0];
+        const lastVal = yValues[yValues.length - 1];
+        const lineColor = lastVal >= firstVal ? '#34d399' : '#f87171';
+
+        const data = [{
+            x: xValues,
+            y: yValues,
+            type: 'scatter',
+            mode: 'lines',
+            line: {
+                color: lineColor,
+                width: 3,
+                shape: 'spline'
+            },
+            fill: 'tozeroy', // Remplit vers le bas
+            fillcolor: lineColor + '22', // Translucide (equivalent rgba ... , 0.13)
+            hoverinfo: 'x+y'
+        }];
+
+        const layout = {
+            margin: { t: 5, b: 5, l: 0, r: 0 },
+            paper_bgcolor: 'rgba(0,0,0,0)',
+            plot_bgcolor: 'rgba(0,0,0,0)',
+            xaxis: { visible: false, fixedrange: true },
+            yaxis: { visible: false, fixedrange: true },
+            showlegend: false,
+            hovermode: 'x closest'
+        };
+
+        const config = { staticPlot: false, displayModeBar: false, responsive: true };
+
+        Plotly.newPlot(container, data, layout, config);
     }
     renderMacroStats(pois, demoHtml = '', networks = [], areaKm2 = 0) {
         const total = pois.length;

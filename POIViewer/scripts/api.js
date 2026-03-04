@@ -8,7 +8,7 @@ export class ApiService {
         this._dbPromise = null;
 
         // État du pays actuel (France par défaut)
-        this.currentCountryAreaId = 36001403916;
+        this.currentCountryAreaId = 3601403916;
         this.currentCountryCode = 'fr';
         this.currentCountryName = 'France';
 
@@ -479,6 +479,8 @@ export class ApiService {
                 .map(el => ({
                     name: el.tags.name,
                     relationId: el.id,
+                    wikidata: el.tags.wikidata || null,
+                    population: el.tags.population ? parseInt(el.tags.population, 10) : null,
                     bounds: [[el.bounds.minlat, el.bounds.minlon], [el.bounds.maxlat, el.bounds.maxlon]]
                 }))
                 .sort((a, b) => a.name.localeCompare(b.name));
@@ -546,6 +548,8 @@ export class ApiService {
                     name: el.tags.name,
                     ref: el.tags['ref:INSEE'] || el.tags.ref,
                     relationId: el.id,
+                    wikidata: el.tags.wikidata || null,
+                    population: el.tags.population ? parseInt(el.tags.population, 10) : null,
                     bounds: [
                         [el.bounds.minlat, el.bounds.minlon],
                         [el.bounds.maxlat, el.bounds.maxlon]
@@ -572,7 +576,7 @@ export class ApiService {
 
         if (this.currentCountryCode === 'fr') {
             // API GeoGouv pour la France (très rapide et précise)
-            const url = `https://geo.api.gouv.fr/communes?nom=${encodeURIComponent(query)}&fields=nom,code,codeDepartement,codesPostaux&format=geojson&geometry=contour&boost=population&limit=10`;
+            const url = `https://geo.api.gouv.fr/communes?nom=${encodeURIComponent(query)}&fields=nom,code,codeDepartement,codesPostaux,population&format=geojson&geometry=contour&boost=population&limit=10`;
             try {
                 const response = await fetch(url);
                 if (!response.ok) throw new Error("GeoAPI Error");
@@ -604,7 +608,8 @@ export class ApiService {
                         geometry: geometry,
                         bounds: [[minLat, minLon], [maxLat, maxLon]],
                         lat: (minLat + maxLat) / 2,
-                        lon: (minLon + maxLon) / 2
+                        lon: (minLon + maxLon) / 2,
+                        population: props.population || null
                     };
                 });
             } catch (error) { console.error(error); return []; }
@@ -629,7 +634,8 @@ export class ApiService {
                         geometry: d.geojson,
                         bounds: [[minLat, minLon], [maxLat, maxLon]],
                         lat: parseFloat(d.lat),
-                        lon: parseFloat(d.lon)
+                        lon: parseFloat(d.lon),
+                        population: d.extratags ? parseInt(d.extratags.population, 10) : null
                     };
                 }).filter(d => d.geometry && (d.geometry.type === 'Polygon' || d.geometry.type === 'MultiPolygon'));
             } catch (error) {
@@ -1012,42 +1018,68 @@ export class ApiService {
 
     /**
      * Retrouve l'identifiant Wikidata d'une zone administrative active
+     * S'appuie sur le nom et/ou le code pour fonctionner à l'international
      */
-    async getZoneWikidataId(activeZone) {
+    async getZoneDemographics(activeZone) {
         if (!activeZone) return null;
-        if (activeZone.wikidata) return activeZone.wikidata; // Déjà fourni par Nominatim
+
+        let result = {
+            wikidata: activeZone.wikidata || null,
+            osmPopulation: activeZone.population || null
+        };
+
+        // Si on a déjà tout, on retourne directement
+        if (result.wikidata && result.osmPopulation) return result;
 
         let query = '';
-        // OPTIMISATION : On restreint la recherche à la zone du pays (area.searchArea) pour éviter le timeout
-        if (activeZone.type === 'commune' && activeZone.code && activeZone.code.length >= 4) {
-            query = `[out:json][timeout:10];area(${this.currentCountryAreaId})->.searchArea;relation["boundary"="administrative"]["ref:INSEE"="${activeZone.code}"](area.searchArea);out tags;`;
-        } else if (activeZone.type === 'dept' || activeZone.type === 'region') {
-            query = `[out:json][timeout:10];area(${this.currentCountryAreaId})->.searchArea;relation["boundary"="administrative"]["ref:INSEE"="${activeZone.code}"](area.searchArea);out tags;`;
+        const safeName = activeZone.name ? activeZone.name.replace(/"/g, '\\"') : '';
+
+        // Optimisation : Utiliser relationId si dispo, sinon chercher par nom/admin_level dans la zone pays
+        if (activeZone.relationId) {
+            query = `[out:json][timeout:15];relation(${activeZone.relationId});out tags;`;
+        } else if (activeZone.type === 'commune') {
+            if (activeZone.code && this.currentCountryCode === 'fr') {
+                // Pour la France, ref:INSEE est très fiable
+                query = `[out:json][timeout:15];area(${this.currentCountryAreaId})->.searchArea;relation["boundary"="administrative"]["ref:INSEE"="${activeZone.code}"](area.searchArea);out tags;`;
+            } else if (safeName) {
+                // À l'international, on cherche par nom + admin_level=8 (souvent ville/commune)
+                query = `[out:json][timeout:15];area(${this.currentCountryAreaId})->.searchArea;relation["boundary"="administrative"]["name"~"^${safeName}$", i]["admin_level"~"8|7"](area.searchArea);out tags;`;
+            }
+        } else if (activeZone.type === 'dept') {
+            query = `[out:json][timeout:15];area(${this.currentCountryAreaId})->.searchArea;relation["boundary"="administrative"]["name"~"^${safeName}$", i]["admin_level"="6"](area.searchArea);out tags;`;
+        } else if (activeZone.type === 'region') {
+            query = `[out:json][timeout:15];area(${this.currentCountryAreaId})->.searchArea;relation["boundary"="administrative"]["name"~"^${safeName}$", i]["admin_level"="4"](area.searchArea);out tags;`;
         }
 
-        if (!query) return null;
-        try {
-            const response = await fetch(this.overpassUrl, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: `data=${encodeURIComponent(query)}`
-            });
+        if (!query && !result.wikidata) return null;
 
-            // On vérifie que la réponse est OK avant de tenter de lire du JSON
-            if (!response.ok) {
-                console.warn(`⚠️ Overpass a refusé la requête (Statut ${response.status})`);
-                return null;
-            }
+        if (query) {
+            try {
+                const response = await fetch(this.overpassUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: `data=${encodeURIComponent(query)}`
+                });
 
-            const data = await response.json();
-            if (data.elements && data.elements.length > 0) {
-                const el = data.elements.find(e => e.tags && e.tags.wikidata);
-                return el ? el.tags.wikidata : null;
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.elements && data.elements.length > 0) {
+                        // Prendre le premier élément pertinent
+                        const el = data.elements[0];
+                        if (el.tags) {
+                            if (!result.wikidata && el.tags.wikidata) result.wikidata = el.tags.wikidata;
+                            if (!result.osmPopulation && el.tags.population) result.osmPopulation = parseInt(el.tags.population, 10);
+                        }
+                    }
+                } else {
+                    console.warn(`⚠️ Overpass a refusé la requête (Statut ${response.status}) pour la démo.`);
+                }
+            } catch (e) {
+                console.error("Erreur getZoneDemographics Overpass:", e);
             }
-        } catch (e) {
-            console.error("Erreur getZoneWikidataId:", e);
         }
-        return null;
+
+        return result;
     }
 
     /**

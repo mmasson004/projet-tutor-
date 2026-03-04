@@ -178,7 +178,8 @@ class App {
                     code: park.code,
                     codeDepartement: park.codeDepartement || (park.code ? String(park.code).substring(0, 2) : null),
                     name: park.name,
-                    wikidata: park.wikidata || null // Capture le wikidata pour la démographie
+                    wikidata: park.wikidata || null, // Capture le wikidata pour la démographie
+                    population: park.population || null
                 };
                 layer = this.mapManager.drawBoundary(park.geometry);
             } else if (park.relationId) {
@@ -261,9 +262,26 @@ class App {
                 // Add Markers to Map (Affiche les POIs sur la carte immédiatement)
                 this.addMarkersToMap(filteredPOIs);
 
-                // Update UI (Macro Stats) - Sans la démographie pour l'instant
-                // Update UI (Macro Stats) - Sans la démographie pour l'instant
-                this.uiRenderer.renderMacroStats(filteredPOIs, '', networks, this.currentAreaKm2);
+                // --- PRÉPARATION DE L'AFFICHAGE DÉMOGRAPHIQUE ---
+                let initialDemoHtml = '';
+
+                if (this.activeZone) {
+                    if (this.activeZone.demoHtml !== undefined) {
+                        // Les données sont déjà en cache
+                        initialDemoHtml = this.activeZone.demoHtml;
+                    } else {
+                        // Les données ne sont pas encore là : on prépare un spinner de chargement avec le même style que la carte KPI
+                        initialDemoHtml = `
+                            <div class="kpi-card glass-panel" style="background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 12px; padding: 16px; margin-bottom: 16px; display: flex; align-items: center; justify-content: center; gap: 12px;">
+                                <span class="spinner" style="width: 24px; height: 24px; border-width: 3px;"></span>
+                                <span style="font-size: 0.9rem; color: var(--color-primary); font-weight: 600;">Recherche de la population...</span>
+                            </div>
+                        `;
+                    }
+                }
+
+                // Update UI (Macro Stats) - Affiche les POIs, chemins, et soit la démo en cache, soit le spinner
+                this.uiRenderer.renderMacroStats(filteredPOIs, initialDemoHtml, networks, this.currentAreaKm2);
 
                 // Construire et afficher les heatmaps
                 this.updateHeatmaps();
@@ -274,39 +292,58 @@ class App {
                     this.updateHeatmaps();
                 };
 
-                // NOUVEAU : On met à jour la liste du panneau de droite !
+                // On met à jour la liste du panneau de droite !
                 this.uiRenderer.renderMicroList(filteredPOIs);
-
-                // --- CHARGEMENT ASYNCHRONE DE LA DÉMOGRAPHIE (Ne bloque plus la carte) ---
+                // --- CHARGEMENT ASYNCHRONE DE LA DÉMOGRAPHIE ---
                 if (this.activeZone) {
-                    if (this.activeZone.demoHtml !== undefined) {
-                        // Si déjà en cache (même vide si erreur), on met à jour le panneau
-                        this.uiRenderer.renderMacroStats(filteredPOIs, this.activeZone.demoHtml, this.currentNetworks, this.currentAreaKm2);
-                    } else {
-                        // On lance la requête avec un verrou pour éviter le spam lors des clics multiples
-                        if (!this.activeZone._demoPromise) {
-                            this.activeZone._demoPromise = this.apiService.getZoneWikidataId(this.activeZone).then(async wikidataId => {
-                                if (wikidataId) {
-                                    this.activeZone.wikidata = wikidataId;
-                                    const history = await this.apiService.fetchPopulationHistory(wikidataId);
-                                    const demoHtml = this.uiRenderer.generateDemographicsKPI(history, this.activeZone.name);
-                                    this.activeZone.demoHtml = demoHtml;
-                                } else {
-                                    this.activeZone.demoHtml = ''; // Pas de data, on évite de re-fetch
+                    const currentZone = this.activeZone;
+
+                    if (currentZone.demoHtml === undefined) {
+                        // Lancement de la requête
+                        if (!currentZone._demoPromise) {
+                            currentZone._demoPromise = this.apiService.getZoneDemographics(currentZone).then(async demoData => {
+                                // 1. On enrichit avec les données d'Overpass si elles existent
+                                if (demoData) {
+                                    currentZone.wikidata = demoData.wikidata || currentZone.wikidata;
+                                    currentZone.population = demoData.osmPopulation || currentZone.population;
                                 }
+
+                                // 2. On tente de récupérer l'historique avec le wikidata 
+                                const history = await this.apiService.fetchPopulationHistory(currentZone.wikidata);
+
+                                // 3. ON GÉNÈRE TOUJOURS LE HTML (pour ne pas perdre la population déjà connue via la recherche de la ville)
+                                currentZone.demoHtml = this.uiRenderer.generateDemographicsKPI(history, currentZone.population, currentZone.name);
+
                             }).catch(e => {
                                 console.warn("Erreur chargement démographie:", e);
-                                this.activeZone.demoHtml = ''; // Marquer comme échoué pour ne pas boucler
+                                // Fallback : En cas de plantage réseau, on affiche au moins la population de base qu'on avait
+                                currentZone.demoHtml = this.uiRenderer.generateDemographicsKPI(null, currentZone.population, currentZone.name);
                             });
                         }
 
-                        // Attacher le rendu d'interface à la complétion de la promesse (qu'elle soit déjà finie ou non)
-                        this.activeZone._demoPromise.finally(() => {
-                            this.uiRenderer.renderMacroStats(this.getFilteredPOIs(), this.activeZone.demoHtml || '', this.currentNetworks, this.currentAreaKm2);
+                        // Quand la promesse est terminée (succès ou échec)
+                        currentZone._demoPromise.finally(() => {
+                            if (this.activeZone === currentZone) {
+                                try {
+                                    // S'il n'y a absolument aucune donnée recensée (ni API, ni recherche), on met un encart gris au lieu d'un trou noir
+                                    const fallbackHtml = `
+                                        <div class="kpi-card glass-panel" style="background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 12px; padding: 12px 16px; margin-bottom: 16px; text-align: center;">
+                                            <span style="font-size: 0.85rem; color: var(--color-text-muted); font-style: italic;">ℹ️ Aucune donnée démographique recensée pour cette zone.</span>
+                                        </div>
+                                    `;
+
+                                    this.uiRenderer.renderMacroStats(this.getFilteredPOIs(), currentZone.demoHtml || fallbackHtml, this.currentNetworks, this.currentAreaKm2);
+                                    this.uiRenderer.renderSparkline();
+                                } catch (err) {
+                                    console.error("Erreur lors de l'affichage final de la macro:", err);
+                                }
+                            }
                         });
+                    } else {
+                        // Si l'information est déjà en cache
+                        this.uiRenderer.renderSparkline();
                     }
                 }
-
                 // Show Sidebar
                 if (filteredPOIs.length > 0) {
                     this.uiRenderer.toggleMicroSidebar(true);
