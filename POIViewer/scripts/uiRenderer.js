@@ -1068,17 +1068,17 @@ export class UiRenderer {
                         <div style="font-size:0.75rem;font-weight:600;color:var(--color-text-muted);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:8px;">🔥 Heatmap sur la carte</div>
                         <div style="display:flex;gap:12px;flex-wrap:wrap;">
                             <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:0.8rem;color:#fff;">
-                                <input type="checkbox" class="heatmap-toggle" data-heat="accommodation" checked style="accent-color:#a78bfa;">
+                                <input type="checkbox" class="heatmap-toggle" data-heat="accommodation" style="accent-color:#a78bfa;">
                                 <span style="width:8px;height:8px;border-radius:50%;background:#a78bfa;display:inline-block;"></span>
                                 Héberg.
                             </label>
                             <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:0.8rem;color:#fff;">
-                                <input type="checkbox" class="heatmap-toggle" data-heat="pedestrian" checked style="accent-color:#34d399;">
+                                <input type="checkbox" class="heatmap-toggle" data-heat="pedestrian" style="accent-color:#34d399;">
                                 <span style="width:8px;height:8px;border-radius:50%;background:#34d399;display:inline-block;"></span>
                                 Piétons
                             </label>
                             <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:0.8rem;color:#fff;">
-                                <input type="checkbox" class="heatmap-toggle" data-heat="cycling" checked style="accent-color:#60a5fa;">
+                                <input type="checkbox" class="heatmap-toggle" data-heat="cycling" style="accent-color:#60a5fa;">
                                 <span style="width:8px;height:8px;border-radius:50%;background:#60a5fa;display:inline-block;"></span>
                                 Vélo
                             </label>

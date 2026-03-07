@@ -23,7 +23,7 @@ class App {
         this.pathWeight = 1;
         this.activeZone = null; // Contexte de la zone administrative active
         this.currentAreaKm2 = 0;
-        this.heatmapVisibility = { accommodation: true, pedestrian: true, cycling: true };
+        this.heatmapVisibility = { accommodation: false, pedestrian: false, cycling: false };
     }
 
     init() {
