@@ -457,7 +457,7 @@ export class UiRenderer {
                 const checkbox = document.createElement('input');
                 checkbox.type = 'checkbox';
                 checkbox.value = cat.id;
-                checkbox.checked = false;
+                checkbox.checked = true;
                 checkbox.style.accentColor = 'var(--color-primary)';
                 checkbox.addEventListener('change', () => {
                     this.updateFilterButtonText();
