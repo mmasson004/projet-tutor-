@@ -27,7 +27,7 @@ export class UiRenderer {
         this.categories = [
             { id: 'tourism', label: 'Tourisme' },
             { id: 'sustenance', label: 'Restauration' },
-            { id: 'accommodation', label: 'Hébergement' },
+            { id: 'accommodation', label: 'Refuges, abris' },
             { id: 'leisure', label: 'Loisirs' },
             { id: 'sport', label: 'Sport' },
             { id: 'historic', label: 'Histoire' },
