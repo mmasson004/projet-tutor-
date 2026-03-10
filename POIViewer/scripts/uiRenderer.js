@@ -717,9 +717,17 @@ export class UiRenderer {
             const catId = container.dataset.catId;
             container.innerHTML = '';
 
+            // Trouver la flèche et la checkbox parentes (le subContainer est enfant direct du wrapper)
+            const wrapper = container.parentElement;
+            const arrow = wrapper ? wrapper.querySelector('.sub-cat-arrow') : null;
+            const parentCb = wrapper ? wrapper.querySelector(':scope > div > label > input[type="checkbox"]') : null;
+            const parentChecked = parentCb ? parentCb.checked : true;
+
             const types = typesByCategory[catId];
             if (!types || Object.keys(types).length === 0) {
                 container.innerHTML = '<span style="font-size: 0.75rem; color: var(--color-text-muted); opacity: 0.6;">Aucun POI</span>';
+                container.style.display = 'none';
+                if (arrow) arrow.textContent = '▸';
                 return;
             }
 
@@ -727,39 +735,6 @@ export class UiRenderer {
             const sortedTypes = Object.entries(types)
                 .sort((a, b) => b[1] - a[1]);
 
-            // "Tout" toggle button
-            const allDiv = document.createElement('div');
-            allDiv.style.marginBottom = '4px';
-            const allLabel = document.createElement('label');
-            allLabel.style.display = 'flex';
-            allLabel.style.alignItems = 'center';
-            allLabel.style.gap = '6px';
-            allLabel.style.fontSize = '0.8rem';
-            allLabel.style.cursor = 'pointer';
-            allLabel.style.color = 'var(--color-text-muted)';
-            allLabel.style.fontStyle = 'italic';
-
-            const allCb = document.createElement('input');
-            allCb.type = 'checkbox';
-            allCb.checked = true;
-            allCb.style.accentColor = 'var(--color-primary)';
-            allCb.addEventListener('change', () => {
-                const subCbs = container.querySelectorAll('input[type="checkbox"].sub-cat-cb');
-                subCbs.forEach(cb => {
-                    cb.checked = allCb.checked;
-                    if (!allCb.checked) {
-                        this.excludedSubCategories.add(cb.value);
-                    } else {
-                        this.excludedSubCategories.delete(cb.value);
-                    }
-                });
-                if (this.onSubCategoryFilterChange) this.onSubCategoryFilterChange();
-            });
-
-            allLabel.appendChild(allCb);
-            allLabel.appendChild(document.createTextNode('Tout'));
-            allDiv.appendChild(allLabel);
-            container.appendChild(allDiv);
 
             sortedTypes.forEach(([typeName, count]) => {
                 const div = document.createElement('div');
@@ -777,7 +752,9 @@ export class UiRenderer {
                 cb.type = 'checkbox';
                 cb.className = 'sub-cat-cb';
                 cb.value = typeName;
-                cb.checked = true;
+                cb.checked = parentChecked; // Hérite de l'état du parent
+                // Si le parent est décoché, exclure immédiatement la sous-catégorie
+                if (!parentChecked) this.excludedSubCategories.add(typeName);
                 cb.style.accentColor = 'var(--color-primary)';
                 cb.addEventListener('change', () => {
                     if (!cb.checked) {
@@ -785,6 +762,23 @@ export class UiRenderer {
                     } else {
                         this.excludedSubCategories.delete(typeName);
                     }
+
+                    // Sync avec la catégorie parente
+                    const allSubCbs = container.querySelectorAll('input[type="checkbox"].sub-cat-cb');
+                    const anyChecked = Array.from(allSubCbs).some(c => c.checked);
+                    const allChecked = Array.from(allSubCbs).every(c => c.checked);
+
+                    if (cb.checked && parentCb && !parentCb.checked) {
+                        // Une sous-cat cochée alors que le parent est décoché → cocher le parent
+                        parentCb.checked = true;
+                        if (this.onFilterChange) this.onFilterChange();
+                    } else if (!anyChecked && parentCb && parentCb.checked) {
+                        // Toutes les sous-cats décochées → décocher le parent
+                        parentCb.checked = false;
+                        if (this.onFilterChange) this.onFilterChange();
+                    }
+
+
                     if (this.onSubCategoryFilterChange) this.onSubCategoryFilterChange();
                 });
 
@@ -794,6 +788,10 @@ export class UiRenderer {
                 div.appendChild(label);
                 container.appendChild(div);
             });
+
+            // Auto-déplier le panneau dès que des sous-catégories sont disponibles
+            container.style.display = 'block';
+            if (arrow) arrow.textContent = '▾';
         });
     }
 

@@ -99,10 +99,13 @@ class App {
             this.uiRenderer.closeSettings();
         });
 
-        // Bind Filter Change
+        // Bind Filter Change (client-side only — no re-fetch needed since all POIs are always loaded)
         this.uiRenderer.onFilterChange = () => {
-            if (this.currentLayer) {
-                this.handleAreaSelection(this.currentLayer);
+            if (this.currentPOIs && this.currentPOIs.length > 0) {
+                const filtered = this.getFilteredPOIs();
+                this.uiRenderer.renderMacroStats(filtered, '', this.currentNetworks, this.currentAreaKm2, this.currentPOIs.length);
+                this.uiRenderer.renderMicroList(filtered);
+                this.addMarkersToMap(filtered);
             }
         };
 
@@ -240,13 +243,11 @@ class App {
             this.currentAreaKm2 = 0;
         }
 
-        // Retrieve selected categories from the new menu
-        const selectedCategories = this.uiRenderer.getSelectedCategories();
-
         if (latLngs) {
             try {
-                // Fetch Data with Filters
-                const { pois, networks } = await this.apiService.fetchPOIs(latLngs, selectedCategories);
+                // Fetch ALL POIs (no category filter at API level — filtering is client-side)
+                // This ensures sub-categories are always populated regardless of active filters
+                const { pois, networks } = await this.apiService.fetchPOIs(latLngs, []);
                 this.currentPOIs = pois;
                 this.currentNetworks = networks;
 
@@ -364,9 +365,19 @@ class App {
     }
 
     getFilteredPOIs() {
+        const selectedCategories = this.uiRenderer.getSelectedCategories();
         const excluded = this.uiRenderer.getExcludedSubCategories();
-        if (excluded.size === 0) return this.currentPOIs;
-        return this.currentPOIs.filter(p => !excluded.has(p.type));
+        return this.currentPOIs.filter(p => {
+            // Filtre par catégorie principale
+            if (selectedCategories.length > 0 && selectedCategories[0] !== 'none') {
+                if (!selectedCategories.includes(p.category)) return false;
+            } else if (selectedCategories[0] === 'none') {
+                return false;
+            }
+            // Filtre par sous-catégorie exclue
+            if (excluded.size > 0 && excluded.has(p.type)) return false;
+            return true;
+        });
     }
 
     /** Construit les données de coordonnées pour les 3 heatmaps */

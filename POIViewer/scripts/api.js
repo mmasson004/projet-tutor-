@@ -202,17 +202,25 @@ export class ApiService {
      * Les networks ne sont jamais filtrés par catégorie.
      */
     _filterByCategories(data, selectedCategories) {
+        // Robustesse : si data est de l'ancien format (tableau de POIs)
+        if (Array.isArray(data)) {
+            data = { pois: data, networks: [] };
+        }
+
+        // Sécurité supplémentaire
+        if (!data || !data.pois) return { pois: [], networks: [] };
+
         const explicitlyNone = selectedCategories.length === 1 && selectedCategories[0] === 'none';
         if (selectedCategories.length === 0) {
             // Pas de filtre = tout retourner
             return data;
         }
         if (explicitlyNone) {
-            return { pois: [], networks: data.networks };
+            return { pois: [], networks: data.networks || [] };
         }
         return {
             pois: data.pois.filter(p => selectedCategories.includes(p.category)),
-            networks: data.networks
+            networks: data.networks || []
         };
     }
 
