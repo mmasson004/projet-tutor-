@@ -36,12 +36,8 @@ export class UiRenderer {
             { id: 'amenity', label: 'Services' },
             { id: 'transport', label: 'Transport' },
             { id: 'healthcare', label: 'Santé' },
-            { id: 'emergency', label: 'Urgence' },
             { id: 'office', label: 'Bureaux' },
             { id: 'craft', label: 'Artisanat' },
-            { id: 'man_made', label: 'Infras' },
-            { id: 'power', label: 'Énergie' },
-            { id: 'barrier', label: 'Barrières' },
             { id: 'place', label: 'Lieux' }
         ];
 
@@ -1824,9 +1820,9 @@ export class UiRenderer {
         const emojis = {
             'tourism': '📷', 'sustenance': '🍴', 'accommodation': '🛏️', 'amenity': '🚻',
             'natural': '🌳', 'historic': '🏛️', 'leisure': '🎡', 'shop': '🛒',
-            'transport': '🚌', 'craft': '🎨', 'office': '💼', 'emergency': '🚨',
-            'man_made': '🏗️', 'place': '📍', 'sport': '⚽', 'healthcare': '⚕️',
-            'power': '⚡', 'barrier': '🚧', 'other': '❓'
+            'transport': '🚌', 'craft': '🎨', 'office': '💼',
+            'place': '📍', 'sport': '⚽', 'healthcare': '⚕️',
+            'other': '❓'
         };
         return emojis[category] || emojis['other'];
     }
@@ -1866,9 +1862,9 @@ export class UiRenderer {
             'tourism': '#fbbf24', 'sustenance': '#f87171', 'accommodation': '#a78bfa',
             'amenity': '#60a5fa', 'natural': '#34d399', 'historic': '#d97706',
             'leisure': '#f472b6', 'shop': '#c084fc', 'transport': '#9ca3af',
-            'craft': '#e879f9', 'office': '#64748b', 'emergency': '#ef4444',
-            'man_made': '#78716c', 'place': '#facc15', 'sport': '#14b8a6',
-            'healthcare': '#f43f5e', 'power': '#a8a29e', 'barrier': '#57534e', 'other': '#94a3b8'
+            'craft': '#e879f9', 'office': '#64748b',
+            'place': '#facc15', 'sport': '#14b8a6',
+            'healthcare': '#f43f5e', 'other': '#94a3b8'
         };
         return colors[category] || colors['other'];
     }

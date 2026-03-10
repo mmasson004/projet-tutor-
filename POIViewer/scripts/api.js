@@ -111,12 +111,8 @@ export class ApiService {
                 'amenity': ['amenity'],
                 'transport': ['public_transport', 'railway'],
                 'healthcare': ['amenity', 'healthcare'],
-                'emergency': ['emergency'],
                 'office': ['office'],
                 'craft': ['craft'],
-                'man_made': ['man_made'],
-                'power': ['power'],
-                'barrier': ['barrier'],
                 'place': ['place']
             };
 
@@ -322,10 +318,6 @@ export class ApiService {
         if (tags.craft) return { category: 'craft', type: tags.craft };
         if (tags.office) return { category: 'office', type: tags.office };
         if (tags.healthcare) return { category: 'healthcare', type: tags.healthcare };
-        if (tags.emergency) return { category: 'emergency', type: tags.emergency };
-        if (tags.man_made) return { category: 'man_made', type: tags.man_made };
-        if (tags.power) return { category: 'power', type: tags.power };
-        if (tags.barrier) return { category: 'barrier', type: tags.barrier };
         if (tags.mountain_pass) return { category: 'natural', type: 'mountain_pass' };
 
         if (tags.public_transport || tags.railway) return { category: 'transport', type: tags.railway || tags.public_transport };
