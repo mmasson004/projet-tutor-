@@ -106,7 +106,7 @@ export class ApiService {
                 'leisure': ['leisure'],
                 'sport': ['sport'],
                 'historic': ['historic'],
-                'natural': ['natural', 'mountain_pass'],
+                'natural': ['natural', 'mountain_pass', 'waterway'],
                 'shop': ['shop'],
                 'amenity': ['amenity'],
                 'transport': ['public_transport', 'railway'],
@@ -280,6 +280,24 @@ export class ApiService {
                     }
                 }
             } else if (el.type === 'way' && el.tags && el.geometry) {
+                // Extraire un centroïde pour les plans d'eau (lacs, étangs) et les afficher comme POIs
+                if (el.tags.natural === 'water' && el.geometry.length >= 4) {
+                    const lats = el.geometry.map(p => p.lat);
+                    const lngs = el.geometry.map(p => p.lon);
+                    const centerLat = lats.reduce((a, b) => a + b, 0) / lats.length;
+                    const centerLng = lngs.reduce((a, b) => a + b, 0) / lngs.length;
+                    const waterType = el.tags.water || 'water';
+                    const waterName = el.tags.name || (waterType === 'lake' ? 'Lac' : waterType === 'pond' ? 'Étang' : 'Plan d\'eau');
+                    pois.push({
+                        id: el.id,
+                        lat: centerLat,
+                        lng: centerLng,
+                        name: waterName,
+                        category: 'natural',
+                        type: waterType,
+                        tags: el.tags
+                    });
+                }
                 networks.push({
                     id: el.id,
                     type: el.tags.highway || el.tags.railway || el.tags.aerialway || el.tags['piste:type'] || 'unknown',
@@ -318,6 +336,7 @@ export class ApiService {
         if (tags.craft) return { category: 'craft', type: tags.craft };
         if (tags.office) return { category: 'office', type: tags.office };
         if (tags.healthcare) return { category: 'healthcare', type: tags.healthcare };
+        if (tags.waterway && ['waterfall', 'spring', 'dam'].includes(tags.waterway)) return { category: 'natural', type: tags.waterway };
         if (tags.mountain_pass) return { category: 'natural', type: 'mountain_pass' };
 
         if (tags.public_transport || tags.railway) return { category: 'transport', type: tags.railway || tags.public_transport };
