@@ -1543,12 +1543,20 @@ export class UiRenderer {
                     <div id="poi-wikidata-block" class="detail-info"></div>
                 </div>
 
-                <!-- OSM Source Link -->
-                <div style="margin-top:16px;text-align:center;">
+                <!-- Source Links -->
+                <div style="margin-top:16px;text-align:center;display:flex;justify-content:center;gap:15px;">
                     <a href="https://www.openstreetmap.org/node/${poi.id}" target="_blank"
                        style="font-size:0.75rem;color:var(--color-text-muted);text-decoration:none;opacity:0.7;">
                        🗺️ Voir sur OpenStreetMap
                     </a>
+                    <span id="poi-wikipedia-bottom-link-container">
+                        ${this._getWikipediaUrl(poi.tags) ? `
+                            <a href="${this._getWikipediaUrl(poi.tags)}" target="_blank"
+                               style="font-size:0.75rem;color:var(--color-text-muted);text-decoration:none;opacity:0.7;">
+                               📖 Voir sur Wikipédia
+                            </a>
+                        ` : ''}
+                    </span>
                 </div>
             </div>`;
 
@@ -1586,6 +1594,16 @@ export class UiRenderer {
                     if (wikidataInfo?.wikipedia) {
                         linksContainer.insertAdjacentHTML('beforeend',
                             `<a href="${wikidataInfo.wikipedia}" target="_blank" class="icon-btn" title="Article Wikipédia">📖</a>`);
+
+                        // Update bottom link if it was missing or different
+                        const bottomContainer = document.getElementById('poi-wikipedia-bottom-link-container');
+                        if (bottomContainer) {
+                            bottomContainer.innerHTML = `
+                                <a href="${wikidataInfo.wikipedia}" target="_blank"
+                                   style="font-size:0.75rem;color:var(--color-text-muted);text-decoration:none;opacity:0.7;">
+                                   📖 Voir sur Wikipédia
+                                </a>`;
+                        }
                     }
                 }
 
@@ -1669,6 +1687,16 @@ export class UiRenderer {
             `${poi.lat.toFixed(5)}, ${poi.lng.toFixed(5)}`));
 
         return rows.join('') || '<p style="color:var(--color-text-muted);font-size:0.85rem;">Aucune donnée OSM disponible.</p>';
+    }
+
+    /** Generates a WP URL from OSM tags if existing */
+    _getWikipediaUrl(tags) {
+        if (!tags || !tags.wikipedia) return null;
+        const parts = tags.wikipedia.split(':');
+        if (parts.length < 2) return null;
+        const lang = parts[0];
+        const title = parts.slice(1).join(':').replace(/ /g, '_');
+        return `https://${lang}.wikipedia.org/wiki/${encodeURIComponent(title)}`;
     }
 
     /** Generates a single info-row HTML string */
