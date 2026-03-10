@@ -1176,58 +1176,7 @@ export class UiRenderer {
         this.macroStats.innerHTML = demoHtml + kpiCardsHtml + densityHtml; // Injecte démographie + KPI + densité en premier
         this._bindHeatmapToggles();
 
-        // --- LEGEND ADDITION ---
-        const legendDiv = document.createElement('div');
-        legendDiv.className = 'network-legend';
-        legendDiv.style.marginBottom = '15px';
-        legendDiv.style.padding = '10px';
-        legendDiv.style.background = 'rgba(255, 255, 255, 0.1)';
-        legendDiv.style.borderRadius = '8px';
-        legendDiv.style.fontSize = '0.85rem';
-        legendDiv.style.color = '#fff';
 
-        legendDiv.innerHTML = `
-            <div style="font-weight: bold; margin-bottom: 8px;">Légende des Chemins</div>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
-                <div style="display: flex; align-items: center; gap: 6px;">
-                    <span style="width: 15px; height: 3px; background: #a855f7; display: inline-block;"></span>
-                    <span>Randonnée (GR)</span>
-                </div>
-                <div style="display: flex; align-items: center; gap: 6px;">
-                    <span style="width: 15px; height: 3px; background: #f97316; display: inline-block;"></span>
-                    <span>VTT / Vélo</span>
-                </div>
-                <div style="display: flex; align-items: center; gap: 6px;">
-                    <span style="width: 15px; height: 3px; background: #059669; display: inline-block;"></span>
-                    <span>Sentier / Piéton</span>
-                </div>
-                <div style="display: flex; align-items: center; gap: 6px;">
-                    <span style="width: 15px; height: 3px; background: #854d0e; display: inline-block;"></span>
-                    <span>Piste (Track)</span>
-                </div>
-                <div style="display: flex; align-items: center; gap: 6px;">
-                    <span style="width: 15px; height: 3px; background: #3b82f6; display: inline-block;"></span>
-                    <span>Piste Cyclable</span>
-                </div>
-                 <div style="display: flex; align-items: center; gap: 6px;">
-                    <span style="width: 15px; height: 3px; background: #facc15; display: inline-block;"></span>
-                    <span>Rando Facile (T1)</span>
-                </div>
-                <div style="display: flex; align-items: center; gap: 6px;">
-                    <span style="width: 15px; height: 3px; background: #ef4444; display: inline-block;"></span>
-                    <span>Rando Interm. (T2/T3)</span>
-                </div>
-                <div style="display: flex; align-items: center; gap: 6px;">
-                    <span style="width: 15px; height: 3px; background: #000000; display: inline-block;"></span>
-                    <span>Rando Difficile (T4+)</span>
-                </div>
-                <div style="display: flex; align-items: center; gap: 6px;">
-                    <span style="width: 15px; height: 3px; background: #4b5563; border-top: 1px dashed #fff; display: inline-block;"></span>
-                    <span>Chemin de fer</span>
-                </div>
-            </div>
-        `;
-        this.macroStats.appendChild(legendDiv);
 
         this.macroStats.style.height = 'auto'; // Let it grow
 
