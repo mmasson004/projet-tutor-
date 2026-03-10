@@ -37,8 +37,7 @@ export class UiRenderer {
             { id: 'transport', label: 'Transport' },
             { id: 'healthcare', label: 'Santé' },
             { id: 'office', label: 'Bureaux' },
-            { id: 'craft', label: 'Artisanat' },
-            { id: 'place', label: 'Lieux' }
+            { id: 'craft', label: 'Artisanat' }
         ];
 
         this.lastPois = [];

@@ -112,8 +112,7 @@ export class ApiService {
                 'transport': ['public_transport', 'railway'],
                 'healthcare': ['amenity', 'healthcare'],
                 'office': ['office'],
-                'craft': ['craft'],
-                'place': ['place']
+                'craft': ['craft']
             };
 
             const allKeys = new Set();
