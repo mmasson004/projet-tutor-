@@ -214,6 +214,24 @@ export class UiRenderer {
         container.innerHTML = `<p class="empty-state" style="font-size: 0.85rem; color: var(--color-text-muted);">${message}</p>`;
     }
 
+    _renderPresetError(containerId, message, onRetry = null) {
+        const container = document.getElementById(containerId);
+        if (!container) return;
+
+        container.innerHTML = `
+            <div class="load-error-block load-error-block--small">
+                <span class="load-error-block__icon">⚠️</span>
+                <p class="load-error-block__msg">${this.escapeHtml(message)}</p>
+                ${onRetry ? '<button class="load-error-block__retry-btn">🔄 Reessayer</button>' : ''}
+            </div>
+        `;
+
+        if (onRetry) {
+            container.querySelector('.load-error-block__retry-btn')
+                ?.addEventListener('click', onRetry);
+        }
+    }
+
     _renderPresetLoading(containerId, message = 'Chargement...') {
         const container = document.getElementById(containerId);
         if (!container) return;
@@ -340,14 +358,38 @@ export class UiRenderer {
             return didRender;
         }).catch((error) => {
             console.error(error);
-            this._renderPresetMessage(config.containerId, 'Chargement impossible pour le moment.');
-            throw error;
+            if (currentCountryAreaId !== this.apiService.currentCountryAreaId) {
+                return false;
+            }
+
+            this._renderPresetError(
+                config.containerId,
+                this._getPresetLoadErrorMessage(error),
+                () => this.loadPresetTab(tabId, { force: true })
+            );
+            return false;
         }).finally(() => {
             this.loadingPresetTabs.delete(requestKey);
         });
 
         this.loadingPresetTabs.set(requestKey, request);
         return request;
+    }
+
+    _getPresetLoadErrorMessage(error) {
+        const message = error?.message || '';
+
+        if (message === 'API Timeout') {
+            return 'Le serveur Overpass a expire avant de repondre.';
+        }
+        if (message === 'API Limit Reached') {
+            return 'Le serveur Overpass refuse temporairement la requete.';
+        }
+        if (/Failed to fetch|NetworkError|Load failed/i.test(message)) {
+            return 'Impossible de joindre le serveur Overpass.';
+        }
+
+        return 'Chargement impossible pour le moment.';
     }
 
     initCountrySearch() {
@@ -475,7 +517,7 @@ export class UiRenderer {
         const emptyMessage = options.emptyMessage || 'Aucun element trouve.';
         const requestCountryAreaId = options.countryAreaId || this.apiService?.currentCountryAreaId;
 
-        container.innerHTML = `<div class="loading-container"><span class="spinner"></span><span>${loadingMessage}</span></div>`;
+        this._renderPresetLoading(containerId, loadingMessage);
 
         let items = [];
         if (this.apiService) {
@@ -601,8 +643,6 @@ export class UiRenderer {
         const serverSelect = document.getElementById('overpass-server-select');
         if (serverSelect) {
             serverSelect.addEventListener('change', (e) => {
-                console.log('%c[Test API] Connexion à : ' + e.target.value, 'color: #3388ff; font-weight: bold;');
-                fetch(e.target.value + "?data=[out:json];node(42.7,0.5,42.8,0.6)[amenity];out 1;").then(r => console.log('%c[Test API] Réponse OK (' + r.status + ') du serveur ' + e.target.value, 'color: lime; font-weight: bold;')).catch(err => console.error('[Test API] Erreur : ', err));
                 if (this.onServerChange) {
                     this.onServerChange(e.target.value);
                 }
@@ -2314,6 +2354,25 @@ export class UiRenderer {
 
     setApiService(apiService) {
         this.apiService = apiService;
+        this.syncOverpassServerSelect(apiService?.overpassUrl);
+    }
+
+    syncOverpassServerSelect(url, { notify = false, previousUrl = null } = {}) {
+        const serverSelect = document.getElementById('overpass-server-select');
+        if (!serverSelect || !url) return;
+
+        if (serverSelect.value !== url) {
+            serverSelect.value = url;
+        }
+
+        if (notify) {
+            const nextLabel = serverSelect.selectedOptions?.[0]?.textContent?.trim() || url;
+            const previousOption = previousUrl
+                ? Array.from(serverSelect.options).find(option => option.value === previousUrl)
+                : null;
+            const previousLabel = previousOption?.textContent?.trim() || previousUrl || 'ancien serveur';
+            this.showToast(`Serveur Overpass bascule vers ${nextLabel} apres echec de ${previousLabel}.`, 'warning', 5000);
+        }
     }
 
     formatAddress(tags) {
