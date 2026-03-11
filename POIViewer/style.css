@@ -73,7 +73,8 @@ body {
 #filters-floating-box {
     position: absolute;
     top: 20px;
-    left: 420px; /* fallback, updated dynamically or via CSS */
+    left: 420px;
+    /* fallback, updated dynamically or via CSS */
     z-index: var(--z-overlay);
     padding: 8px;
     border-radius: 14px;
@@ -728,7 +729,7 @@ body {
     bottom: 20px;
     left: 20px;
     z-index: var(--z-overlay);
-    width: 600px;
+    width: 700px;
     max-width: 95vw;
     max-height: 50vh;
     /* Compact height */
