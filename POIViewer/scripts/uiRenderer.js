@@ -222,7 +222,7 @@ export class UiRenderer {
             <div class="load-error-block load-error-block--small">
                 <span class="load-error-block__icon">⚠️</span>
                 <p class="load-error-block__msg">${this.escapeHtml(message)}</p>
-                ${onRetry ? '<button class="load-error-block__retry-btn">🔄 Reessayer</button>' : ''}
+                ${onRetry ? '<button class="load-error-block__retry-btn">Reessayer</button>' : ''}
             </div>
         `;
 
@@ -538,7 +538,7 @@ export class UiRenderer {
             const isFr = this.apiService?.currentCountryCode === 'fr';
             adminType = isFr && adminLevel === '4' ? 'region'
                 : isFr && adminLevel === '6' ? 'dept'
-                : 'admin';
+                    : 'admin';
         }
 
         container.innerHTML = '';
@@ -1107,9 +1107,9 @@ export class UiRenderer {
     showError(message = 'Impossible de charger les données.', onRetry = null) {
         const errorBlock = (small = false) => `
             <div class="load-error-block${small ? ' load-error-block--small' : ''}">
-                <span class="load-error-block__icon">⚠️</span>
+                <span class="load-error-block__icon"></span>
                 <p class="load-error-block__msg">${message}</p>
-                ${onRetry ? `<button class="load-error-block__retry-btn">🔄 Réessayer</button>` : ''}
+                ${onRetry ? `<button class="load-error-block__retry-btn">Réessayer</button>` : ''}
             </div>`;
 
         this.macroStats.innerHTML = errorBlock(true);
@@ -1297,87 +1297,164 @@ export class UiRenderer {
             }
         });
 
-        // ── KPI Cards HTML ─────────────────────────────────────────────────
+        // ── HELPERS ────────────────────────────────────────────────────────
+        // Barre horizontale proportionnelle avec label, valeur, couleur
+        const pBar = (label, value, max, color, suffix = '') => {
+            const pct = max > 0 ? Math.min((value / max) * 100, 100) : 0;
+            const fmt = typeof value === 'number' ? (Number.isInteger(value) ? value.toLocaleString('fr-FR') : value.toFixed(2)) : value;
+            return `<div class="ind-row">
+                <div class="ind-row__head">
+                    <span class="ind-row__label">${label}</span>
+                    <span class="ind-row__val" style="color:${color};">${fmt}${suffix}</span>
+                </div>
+                <div class="ind-row__track"><div class="ind-row__fill" style="width:${pct}%;background:${color};"></div></div>
+            </div>`;
+        };
+
+        // Stat inline compacte
+        const inlineStat = (label, value, color) => {
+            return `<div class="ind-inline">
+                <span class="ind-inline__label">${label}</span>
+                <span class="ind-inline__val" style="color:${color};">${typeof value === 'number' ? value.toLocaleString('fr-FR') : value}</span>
+            </div>`;
+        };
+
+        const formatChartMetric = (value) => {
+            if (!Number.isFinite(value) || value <= 0) return '0';
+            if (value >= 100) return value.toFixed(0);
+            if (value >= 10) return value.toFixed(1);
+            if (value >= 1) return value.toFixed(2);
+            if (value >= 0.1) return value.toFixed(2);
+            return value.toFixed(3);
+        };
+
+        const buildTreemapTrace = (treemapData, valueLabel = 'elements') => ([{
+            type: 'treemap',
+            ids: treemapData.ids,
+            labels: treemapData.labels,
+            parents: treemapData.parents,
+            values: treemapData.values,
+            branchvalues: 'total',
+            sort: false,
+            marker: {
+                colors: treemapData.colors,
+                line: { width: 2, color: 'rgba(255,255,255,0.34)' },
+                pad: { b: 5, l: 5, r: 5, t: 16 }
+            },
+            tiling: {
+                packing: 'squarify',
+                squarifyratio: 1.15
+            },
+            pathbar: { visible: false },
+            root: { color: 'rgba(255,255,255,0.025)' },
+            textfont: { family: 'Outfit, sans-serif', color: '#ffffff', size: 12 },
+            textposition: 'middle center',
+            texttemplate: '%{label}<br><span style="font-size:11px">%{value}</span>',
+            hovertemplate: `<b>%{label}</b><br>%{value} ${valueLabel}<extra></extra>`
+        }]);
+
+        // ── SECTION 3 : Tourisme ──────────────────────────────────────────
         let accommodationHtml = '';
         if (inseeStats) {
-            const starsHtml = Object.entries(inseeStats.hotel_stars).filter(([k,v]) => v > 0)
-                .map(([k,v]) => `<span class="kpi-star-badge">${k === 'NC' ? 'NC' : k + '★'}: ${v}</span>`).join('')
-                || '<span class="kpi-sub">Aucun classé</span>';
+            const totalBeds = inseeStats.hotel_beds + inseeStats.camping_beds + inseeStats.collective_beds;
+            const maxBeds = Math.max(inseeStats.hotel_beds, inseeStats.camping_beds, inseeStats.collective_beds, 1);
+            let starsHtml = Object.entries(inseeStats.hotel_stars).filter(([k, v]) => v > 0)
+                .map(([k, v]) => `<span class="kpi-star-badge">${k === 'NC' ? 'NC' : k + '★'} ${v}</span>`).join('')
+                || '<span class="kpi-sub">Aucun classement</span>';
+            const starEntries = Object.entries(inseeStats.hotel_stars)
+                .filter(([, value]) => value > 0)
+                .sort(([a], [b]) => {
+                    const aRank = a === 'NC' ? -1 : Number(a);
+                    const bRank = b === 'NC' ? -1 : Number(b);
+                    return bRank - aRank;
+                });
+            starsHtml = starEntries.length > 0
+                ? `<div class="kpi-stars__title">Classement des hotels</div>${starEntries.map(([rank, count]) => {
+                    const isUnclassified = rank === 'NC';
+                    const tierText = isUnclassified ? 'NC' : '★'.repeat(Number(rank));
+                    const labelText = isUnclassified
+                        ? 'Non classes'
+                        : `${rank} etoile${Number(rank) > 1 ? 's' : ''}`;
+                    const countText = `${count} hotel${count > 1 ? 's' : ''}`;
+                    return `
+                        <div class="kpi-star-badge">
+                            <span class="kpi-star-badge__tier">${tierText}</span>
+                            <span class="kpi-star-badge__label">${labelText}</span>
+                            <span class="kpi-star-badge__count">${countText}</span>
+                        </div>`;
+                }).join('')}`
+                : '<span class="kpi-sub">Aucun classement</span>';
             accommodationHtml = `
-                <div class="kpi-card kpi-card--col kpi-card--purple" style="margin-bottom:6px;">
-                    <div class="kpi-label">🌟 Hébergements INSEE 2026</div>
-                    <div class="kpi-value">${inseeStats.total_loc.toLocaleString('fr-FR')}</div>
-                    <div class="kpi-grid kpi-grid--3" style="width:100%;margin-top:6px;">
-                        <div class="kpi-sub-item">
-                            <div class="kpi-sub-item__label">🏨 Hôtels</div>
-                            <div class="kpi-sub-item__value">${inseeStats.hotel_beds.toLocaleString('fr-FR')} lits</div>
-                        </div>
-                        <div class="kpi-sub-item">
-                            <div class="kpi-sub-item__label">⛺ Campings</div>
-                            <div class="kpi-sub-item__value">${inseeStats.camping_beds.toLocaleString('fr-FR')} lits</div>
-                        </div>
-                        <div class="kpi-sub-item">
-                            <div class="kpi-sub-item__label">🏘️ Collectifs</div>
-                            <div class="kpi-sub-item__value">${inseeStats.collective_beds.toLocaleString('fr-FR')} lits</div>
-                        </div>
+                <div class="ind-block ind-block--purple">
+                    <div class="ind-block__header">
+                        <span class="ind-block__title">INSEE 2026</span>
+                        <span class="ind-block__big">${inseeStats.total_loc.toLocaleString('fr-FR')} <span class="ind-block__unit">hebergements</span></span>
                     </div>
-                    <div class="kpi-stars">${starsHtml}</div>
+                    ${pBar('Lits hotels', inseeStats.hotel_beds, maxBeds, '#c4b5fd', ' lits')}
+                    ${pBar('Lits campings', inseeStats.camping_beds, maxBeds, '#a78bfa', ' lits')}
+                    ${pBar('Lits collectifs', inseeStats.collective_beds, maxBeds, '#8b5cf6', ' lits')}
+                    <div class="ind-block__footer">
+                        <span class="ind-block__total">${totalBeds.toLocaleString('fr-FR')} lits au total</span>
+                        <div class="kpi-stars">${starsHtml}</div>
+                    </div>
                 </div>`;
         } else {
             accommodationHtml = `
-                <div class="kpi-card kpi-card--col kpi-card--purple" style="margin-bottom:6px;">
-                    <div class="kpi-label">🌟 Hébergements INSEE 2026</div>
-                    <div class="kpi-value" style="opacity:0.4;">Indisponible</div>
-                    <div class="kpi-grid kpi-grid--3" style="width:100%;margin-top:6px;">
-                        <div class="kpi-sub-item"><div class="kpi-sub-item__label">🏨 Hôtels</div><div class="kpi-sub-item__value" style="opacity:0.3;">N/A</div></div>
-                        <div class="kpi-sub-item"><div class="kpi-sub-item__label">⛺ Campings</div><div class="kpi-sub-item__value" style="opacity:0.3;">N/A</div></div>
-                        <div class="kpi-sub-item"><div class="kpi-sub-item__label">🏘️ Collectifs</div><div class="kpi-sub-item__value" style="opacity:0.3;">N/A</div></div>
+                <div class="ind-block ind-block--purple" style="opacity:0.5;">
+                    <div class="ind-block__header">
+                        <span class="ind-block__title">INSEE 2026</span>
+                        <span class="ind-block__big" style="opacity:0.4;">Indisponible</span>
                     </div>
+                    <div class="kpi-sub" style="padding:6px 0;">Donnees INSEE non disponibles pour cette zone</div>
                 </div>`;
         }
 
-        // ── Build section contents ─────────────────────────────────────────
+        // Sentiers : ratio visuel piétons vs vélo (stacked bar)
+        const totalTrailsCount = pedestrianTrailCount + cyclingTrailCount;
+        const pedPct = totalTrailsCount > 0 ? (pedestrianTrailCount / totalTrailsCount * 100) : 50;
         const trailsHtml = `
-            <div class="kpi-grid kpi-grid--2" style="margin-top:6px;">
-                <div class="kpi-card kpi-card--col kpi-card--green">
-                    <div class="kpi-label">🚶 Sentiers piétons</div>
-                    <div class="kpi-value">${pedestrianTrailCount.toLocaleString('fr-FR')}</div>
-                    <div class="kpi-sub">chemins & randos</div>
+            <div class="ind-block ind-block--green" style="margin-top:6px;">
+                <div class="ind-block__header">
+                    <span class="ind-block__title">Sentiers & pistes</span>
+                    <span class="ind-block__big">${totalTrailsCount.toLocaleString('fr-FR')} <span class="ind-block__unit">traces</span></span>
                 </div>
-                <div class="kpi-card kpi-card--col kpi-card--blue">
-                    <div class="kpi-label">🚴 Pistes cyclables</div>
-                    <div class="kpi-value">${cyclingTrailCount.toLocaleString('fr-FR')}</div>
-                    <div class="kpi-sub">voies dans la zone</div>
+                <div class="ind-stacked">
+                    <div class="ind-stacked__bar">
+                        <div class="ind-stacked__seg" style="width:${pedPct}%;background:#34d399;" title="Pietons ${pedestrianTrailCount}"></div>
+                        <div class="ind-stacked__seg" style="width:${100 - pedPct}%;background:#60a5fa;" title="Velo ${cyclingTrailCount}"></div>
+                    </div>
+                    <div class="ind-stacked__legend">
+                        <span><span class="heatmap-dot" style="background:#34d399;"></span> Pietons <b>${pedestrianTrailCount.toLocaleString('fr-FR')}</b></span>
+                        <span><span class="heatmap-dot" style="background:#60a5fa;"></span> Velo <b>${cyclingTrailCount.toLocaleString('fr-FR')}</b></span>
+                    </div>
                 </div>
             </div>`;
         const section3Html = accommodationHtml + trailsHtml;
 
-        // Section 4: Marketing digital
+        // ── SECTION 4 : Marketing digital ─────────────────────────────────
+        const webPct = total > 0 ? (websiteCount / total * 100) : 0;
+        const socPct = total > 0 ? (socialMediaCount / total * 100) : 0;
+        const wikiPct = total > 0 ? (wikivoyageCount / total * 100) : 0;
         const section4Html = `
-            <div class="kpi-grid kpi-grid--3">
-                <div class="kpi-card kpi-card--col kpi-card--emerald">
-                    <div class="kpi-label">🌐 Sites Web</div>
-                    <div class="kpi-value">${websiteCount.toLocaleString('fr-FR')}</div>
-                    <div class="kpi-sub">${total > 0 ? ((websiteCount / total) * 100).toFixed(1) : 0}%</div>
+            <div class="ind-block">
+                <div class="ind-block__header">
+                    <span class="ind-block__title">Presence numerique</span>
+                    <span class="ind-block__big">${total.toLocaleString('fr-FR')} <span class="ind-block__unit">POIs analyses</span></span>
                 </div>
-                <div class="kpi-card kpi-card--col kpi-card--pink">
-                    <div class="kpi-label">📱 Réseaux Soc.</div>
-                    <div class="kpi-value">${socialMediaCount.toLocaleString('fr-FR')}</div>
-                    <div class="kpi-sub">${total > 0 ? ((socialMediaCount / total) * 100).toFixed(1) : 0}%</div>
-                </div>
-                <div class="kpi-card kpi-card--col kpi-card--amber">
-                    <div class="kpi-label">🎒 Wikivoyage</div>
-                    <div class="kpi-value">${wikivoyageCount.toLocaleString('fr-FR')}</div>
-                    <div class="kpi-sub">${total > 0 ? ((wikivoyageCount / total) * 100).toFixed(1) : 0}%</div>
+                ${pBar('Site web', webPct, 100, '#34d399', '%')}
+                ${pBar('Reseaux sociaux', socPct, 100, '#ec4899', '%')}
+                ${pBar('Wikivoyage', wikiPct, 100, '#fbbf24', '%')}
+                <div class="ind-row__head" style="margin-top:4px;opacity:0.6;">
+                    <span class="ind-row__label">${websiteCount + socialMediaCount + wikivoyageCount} POIs avec au moins 1 presence</span>
                 </div>
             </div>`;
 
         // ── Collapsible Section Helper ────────────────────────────────────
-        const buildCollapsibleSection = (title, emoji, contentHtml, sectionId, defaultOpen = true) => {
+        const buildCollapsibleSection = (title, contentHtml, sectionId, defaultOpen = true) => {
             return `
                 <div class="macro-section">
                     <button class="macro-section-toggle" data-section="${sectionId}">
-                        <span>${emoji} ${title}</span>
+                        <span>${title}</span>
                         <span class="macro-section-chevron" ${defaultOpen ? 'style="transform:rotate(180deg)"' : ''}>▾</span>
                     </button>
                     <div class="macro-section-body" id="${sectionId}" ${defaultOpen ? '' : 'style="display:none"'}>
@@ -1394,13 +1471,13 @@ export class UiRenderer {
             const cycleDensity = cyclingTrailCount / areaKm2;
             const maxDensity = Math.max(accomDensity, pedDensity, cycleDensity, 0.1);
 
-            const densityBar = (label, emoji, value, color, colorRgb) => {
+            const densityBar = (label, value, color, colorRgb) => {
                 const pct = Math.min((value / maxDensity) * 100, 100);
                 const formatted = value < 0.01 ? value.toExponential(1) : value.toFixed(2);
                 return `
                     <div class="density-bar">
                         <div class="density-bar__header">
-                            <span class="density-bar__label">${emoji} ${label}</span>
+                            <span class="density-bar__label">${label}</span>
                             <span class="density-bar__value" style="color:${color};">${formatted} <span class="density-bar__unit">/ km²</span></span>
                         </div>
                         <div class="density-bar__track">
@@ -1412,14 +1489,14 @@ export class UiRenderer {
             densityHtml = `
                 <div id="density-heatmap-panel" class="density-panel">
                     <div class="density-panel__title">
-                        <span>🗺️ Densité par km²</span>
+                        <span>Densite par km²</span>
                         <span class="density-bar__unit">Surface : ${areaKm2.toFixed(1)} km²</span>
                     </div>
-                    ${densityBar('Hébergements', '🏨', accomDensity, '#a78bfa', '167,139,250')}
-                    ${densityBar('Sentiers piétons', '🚶', pedDensity, '#34d399', '5,150,105')}
-                    ${densityBar('Pistes cyclables', '🚴', cycleDensity, '#60a5fa', '59,130,246')}
+                    ${densityBar('Hebergements', accomDensity, '#a78bfa', '167,139,250')}
+                    ${densityBar('Sentiers pietons', pedDensity, '#34d399', '5,150,105')}
+                    ${densityBar('Pistes cyclables', cycleDensity, '#60a5fa', '59,130,246')}
                     <div class="heatmap-toggles">
-                        <div class="heatmap-toggles__title">🔥 Heatmap sur la carte</div>
+                        <div class="heatmap-toggles__title">Heatmap sur la carte</div>
                         <div class="heatmap-toggles__row">
                             <label class="heatmap-toggle-label">
                                 <input type="checkbox" class="heatmap-toggle" data-heat="accommodation" style="accent-color:#a78bfa;">
@@ -1439,55 +1516,57 @@ export class UiRenderer {
         }
 
         // ── Helper: infra KPI block (réutilisé dans les 2 branches) ──────
+        const transportTotal = busStopCount + trainStationCount + airportCount;
+        const servicesTotal = parkingCount + sanitaryCount + chargingCount;
+
         const buildInfraKpis = () => {
+            const maxTransport = Math.max(busStopCount, trainStationCount, airportCount, 1);
+            const maxServices = Math.max(parkingCount, sanitaryCount, chargingCount, 1);
+
             let html = `
-                <div class="kpi-grid kpi-grid--3" style="margin-bottom:6px;">
-                    <div class="kpi-card kpi-card--col kpi-card--amber"><div class="kpi-label">🚌 Arrêts de bus</div><div class="kpi-value">${busStopCount.toLocaleString('fr-FR')}</div></div>
-                    <div class="kpi-card kpi-card--col kpi-card--violet"><div class="kpi-label">🚆 Gares</div><div class="kpi-value">${trainStationCount.toLocaleString('fr-FR')}</div></div>
-                    <div class="kpi-card kpi-card--col kpi-card--sky"><div class="kpi-label">✈️ Aéroports</div><div class="kpi-value">${airportCount.toLocaleString('fr-FR')}</div></div>
-                </div>`;
-            if (areaKm2 > 0) {
-                html += `
-                <div class="transport-density">
-                    <div class="transport-density__title">📍 Densité transport / km²</div>
-                    <div class="transport-density__grid">
-                        <div><div class="transport-density__label">🚌 Bus</div><div class="transport-density__value" style="color:#fbbf24;">${(busStopCount / areaKm2).toFixed(2)}</div></div>
-                        <div><div class="transport-density__label">🚆 Gares</div><div class="transport-density__value" style="color:#8b5cf6;">${(trainStationCount / areaKm2).toFixed(2)}</div></div>
-                        <div><div class="transport-density__label">✈️ Aéro.</div><div class="transport-density__value" style="color:#0ea5e9;">${(airportCount / areaKm2).toFixed(2)}</div></div>
+                <div class="ind-block" style="margin-bottom:6px;">
+                    <div class="ind-block__header">
+                        <span class="ind-block__title">Transports</span>
+                        <span class="ind-block__big">${transportTotal.toLocaleString('fr-FR')} <span class="ind-block__unit">points d'acces</span></span>
                     </div>
-                </div>`;
-            }
-            html += `
-                <div class="kpi-grid kpi-grid--3" style="margin-bottom:6px;">
-                    <div class="kpi-card kpi-card--col kpi-card--slate"><div class="kpi-label">🅿️ Stationnements</div><div class="kpi-value">${parkingCount.toLocaleString('fr-FR')}</div></div>
-                    <div class="kpi-card kpi-card--col kpi-card--cyan"><div class="kpi-label">🚻 Sanitaires</div><div class="kpi-value">${sanitaryCount.toLocaleString('fr-FR')}</div></div>
-                    <div class="kpi-card kpi-card--col kpi-card--lime"><div class="kpi-label">🔌 Bornes recharge</div><div class="kpi-value">${chargingCount.toLocaleString('fr-FR')}</div></div>
+                    ${pBar('Arrets de bus', busStopCount, maxTransport, '#fbbf24')}
+                    ${pBar('Gares', trainStationCount, maxTransport, '#8b5cf6')}
+                    ${pBar('Aeroports', airportCount, maxTransport, '#0ea5e9')}
+                </div>
+                <div class="ind-block" style="margin-bottom:6px;">
+                    <div class="ind-block__header">
+                        <span class="ind-block__title">Services & equipements</span>
+                        <span class="ind-block__big">${servicesTotal.toLocaleString('fr-FR')} <span class="ind-block__unit">installations</span></span>
+                    </div>
+                    ${pBar('Stationnements', parkingCount, maxServices, '#64748b')}
+                    ${pBar('Sanitaires', sanitaryCount, maxServices, '#06b6d4')}
+                    ${pBar('Bornes recharge', chargingCount, maxServices, '#22c55e')}
                 </div>`;
             return html;
         };
 
         // Si aucun POI après filtrage
         if (total === 0) {
-            const areaHtml = areaKm2 > 0 ? `<div class="kpi-card kpi-card--blue" style="margin-bottom:6px;"><div><div class="kpi-label">📐 Superficie</div><div class="kpi-value">${areaKm2.toFixed(2)} km²</div></div></div>` : '';
+            const areaHtml = areaKm2 > 0 ? `<div class="ind-block" style="margin-bottom:6px;"><div class="ind-block__header"><span class="ind-block__title">Superficie</span><span class="ind-block__big">${areaKm2.toFixed(2)} <span class="ind-block__unit">km²</span></span></div></div>` : '';
             const section1Html = areaHtml + demoHtml + densityHtml;
             const infraKpisHtml = buildInfraKpis() + '<div id="section-infra-content"></div>';
             const countLabel = totalRaw > 0
                 ? `${totalRaw.toLocaleString('fr-FR')} POI${totalRaw > 1 ? 's' : ''} trouvé${totalRaw > 1 ? 's' : ''}`
                 : 'POIs disponibles';
             this.macroStats.innerHTML =
-                buildCollapsibleSection('Informations générales', '📊', section1Html, 'section-info', true) +
-                buildCollapsibleSection('Infrastructure & activités', '🗺️', infraKpisHtml, 'section-infra', true) +
-                buildCollapsibleSection('Tourisme', '🏨', section3Html, 'section-tourisme', true) +
-                buildCollapsibleSection('Marketing digital', '📱', section4Html, 'section-marketing', false) +
+                buildCollapsibleSection('Informations generales', section1Html, 'section-info', true) +
+                buildCollapsibleSection('Infrastructure & activites', infraKpisHtml, 'section-infra', true) +
+                buildCollapsibleSection('Tourisme', section3Html, 'section-tourisme', true) +
+                buildCollapsibleSection('Marketing digital', section4Html, 'section-marketing', true) +
                 `<div class="stat-item empty">
-                    <span style="font-size:1.5rem;">🔍</span>
+                    <span style="font-size:1.5rem;"></span>
                     <div class="kpi-label" style="margin-top:6px;font-size:0.82rem;font-weight:600;color:var(--color-text);">${countLabel} — aucun affiché</div>
                     <div class="kpi-sub">Activez une catégorie dans les filtres.</div>
                 </div>`;
             this._bindCollapsibleSections();
             this._bindHeatmapToggles();
             if (totalRaw > 0) {
-                this.showToast(`🗺️ ${countLabel} — activez les filtres pour les afficher`, 'info', 5000);
+                this.showToast(`${countLabel} — activez les filtres pour les afficher`, 'info', 5000);
             }
             return;
         }
@@ -1497,7 +1576,7 @@ export class UiRenderer {
         const parents = [''];
         const ids = [rootId];
         const values = [total];
-        const colors = ['#ffffff'];
+        const colors = ['rgba(255,255,255,0.08)'];
 
         const categoryCounts = {};
         const typeCounts = {};
@@ -1511,31 +1590,31 @@ export class UiRenderer {
         });
 
         // Ajout des catégories (Parents)
-        Object.keys(categoryCounts).forEach(catId => {
+        Object.entries(categoryCounts).sort((a, b) => b[1] - a[1]).forEach(([catId, categoryCount]) => {
             const catDef = this.categories.find(c => c.id === catId);
             const label = catDef ? catDef.label : catId;
             const color = this.getCategoryColor(catId);
 
             ids.push(catId);
-            labels.push(`<b style="font-size:16px">${this.getCategoryEmoji(catId)} ${label.toUpperCase()}</b>`); parents.push(rootId);
-            values.push(categoryCounts[catId]);
-            colors.push(color); // Couleur pleine pour le parent
+            labels.push(`${this.getCategoryEmoji(catId)} ${label}`);
+            parents.push(rootId);
+            values.push(categoryCount);
+            colors.push(color);
         });
 
         // Ajout des types (Enfants/Feuilles) avec effet de dégradé
-        Object.keys(typeCounts).forEach(typeKey => {
+        Object.entries(typeCounts).sort((a, b) => b[1] - a[1]).forEach(([typeKey, count]) => {
             const [catId, typeName] = typeKey.split('__');
-            const count = typeCounts[typeKey];
             const label = this.translateType(typeName);
             const baseColor = this.getCategoryColor(catId);
 
             ids.push(typeKey);
-            labels.push(`${label} (${count})`);
+            labels.push(label);
             parents.push(catId);
             values.push(count);
 
             // MODIFICATION ICI : Éclaircissement (+35) pour simuler le dégradé de l'image
-            colors.push(this.adjustColor(baseColor, 35));
+            colors.push(this.adjustColor(baseColor, 24));
         });
 
         const data = [{
@@ -1558,23 +1637,29 @@ export class UiRenderer {
         }];
 
         const layout = {
-            margin: { t: 0, l: 0, r: 0, b: 0 },
+            margin: { t: 6, l: 0, r: 0, b: 0 },
             paper_bgcolor: 'rgba(0,0,0,0)',
             plot_bgcolor: 'rgba(0,0,0,0)',
-            font: { family: "Outfit, sans-serif", color: "#ffffff", size: 12 }
+            font: { family: "Outfit, sans-serif", color: "#ffffff", size: 12 },
+            hoverlabel: {
+                bgcolor: 'rgba(5,10,18,0.92)',
+                bordercolor: 'rgba(255,255,255,0.14)',
+                font: { family: 'Outfit, sans-serif', color: '#ffffff', size: 12 }
+            }
         };
 
         const config = { responsive: true, displayModeBar: false };
+        const mainTreemapData = buildTreemapTrace({ ids, labels, parents, values, colors }, 'POI');
 
         // ── Assemble the 4 sections ────────────────────────────────────────
-        const areaHtml = areaKm2 > 0 ? `<div class="kpi-card kpi-card--blue" style="margin-bottom:6px;"><div><div class="kpi-label">📐 Superficie</div><div class="kpi-value">${areaKm2.toFixed(2)} km²</div></div></div>` : '';
+        const areaHtml = areaKm2 > 0 ? `<div class="ind-block" style="margin-bottom:6px;"><div class="ind-block__header"><span class="ind-block__title">Superficie</span><span class="ind-block__big">${areaKm2.toFixed(2)} <span class="ind-block__unit">km²</span></span></div></div>` : '';
         const section1Html = areaHtml + demoHtml + densityHtml;
         const infraKpisHtml = buildInfraKpis() + `<div id="section-infra-content"></div>`;
         this.macroStats.innerHTML =
-            buildCollapsibleSection('Informations générales', '📊', section1Html, 'section-info', true) +
-            buildCollapsibleSection('Infrastructure \& activités', '🗺️', infraKpisHtml, 'section-infra', true) +
-            buildCollapsibleSection('Tourisme', '🏨', section3Html, 'section-tourisme', true) +
-            buildCollapsibleSection('Marketing digitale', '📱', section4Html, 'section-marketing', false);
+            buildCollapsibleSection('Informations generales', section1Html, 'section-info', true) +
+            buildCollapsibleSection('Infrastructure & activites', infraKpisHtml, 'section-infra', true) +
+            buildCollapsibleSection('Tourisme', section3Html, 'section-tourisme', true) +
+            buildCollapsibleSection('Marketing digital', section4Html, 'section-marketing', true);
 
         this._bindCollapsibleSections();
         this._bindHeatmapToggles();
@@ -1592,36 +1677,52 @@ export class UiRenderer {
         chartTitle.className = 'mini-treemap-title';
         chartTitle.textContent = 'Répartition';
 
+        const chartTitleGroup = document.createElement('div');
+        chartTitleGroup.className = 'mini-treemap-title-group';
+        chartTitle.textContent = 'Repartition des POI';
+
+        const chartMeta = document.createElement('span');
+        chartMeta.className = 'mini-treemap-meta';
+        chartMeta.textContent = `${Object.keys(categoryCounts).length} categories`;
+
         const maxBtn = document.createElement('button');
         maxBtn.className = 'maximize-btn';
         maxBtn.innerHTML = '⤢ Agrandir';
         maxBtn.title = 'Voir en plein écran';
         maxBtn.addEventListener('click', () => {
-            this._toggleFullScreenChart(data, layout);
+            this._toggleFullScreenChart(mainTreemapData, layout);
         });
 
-        chartHeader.appendChild(chartTitle);
+        chartTitleGroup.appendChild(chartTitle);
+        chartTitleGroup.appendChild(chartMeta);
+        chartHeader.appendChild(chartTitleGroup);
         chartHeader.appendChild(maxBtn);
         infraContainer.appendChild(chartHeader);
 
         const chartDiv = document.createElement('div');
         chartDiv.style.height = '300px';
         chartDiv.id = 'mini-chart-div';
+        chartDiv.className = 'mini-chart-canvas mini-chart-canvas--lg';
         infraContainer.appendChild(chartDiv);
 
-        Plotly.newPlot(chartDiv, data, layout, config);
+        Plotly.newPlot(chartDiv, mainTreemapData, layout, config);
         this.lastPois = pois;
 
         // ── 3 MINI TREEMAPS ────────────────────────────────────────────────
         const miniLayout = {
-            margin: { t: 0, l: 0, r: 0, b: 0 },
+            margin: { t: 6, l: 0, r: 0, b: 0 },
             paper_bgcolor: 'rgba(0,0,0,0)',
             plot_bgcolor: 'rgba(0,0,0,0)',
-            font: { family: "Outfit, sans-serif", color: "#ffffff", size: 11 }
+            font: { family: "Outfit, sans-serif", color: "#ffffff", size: 11 },
+            hoverlabel: {
+                bgcolor: 'rgba(5,10,18,0.92)',
+                bordercolor: 'rgba(255,255,255,0.14)',
+                font: { family: 'Outfit, sans-serif', color: '#ffffff', size: 11 }
+            }
         };
         const miniConfig = { responsive: true, displayModeBar: false };
 
-        const addMiniTreemap = (titleText, emoji, treemapData) => {
+        const addMiniTreemap = (titleText, treemapData, metaText = '') => {
             if (!treemapData || treemapData.values.length <= 1) return;
 
             const section = document.createElement('div');
@@ -1630,37 +1731,33 @@ export class UiRenderer {
             const headerRow = document.createElement('div');
             headerRow.className = 'mini-treemap-header';
 
+            const headerGroup = document.createElement('div');
+            headerGroup.className = 'mini-treemap-title-group';
+
             const header = document.createElement('span');
             header.className = 'mini-treemap-title';
-            header.textContent = `${emoji} ${titleText}`;
-            headerRow.appendChild(header);
+            header.textContent = titleText;
+            headerGroup.appendChild(header);
+
+            if (metaText) {
+                const meta = document.createElement('span');
+                meta.className = 'mini-treemap-meta';
+                meta.textContent = metaText;
+                headerGroup.appendChild(meta);
+            }
 
             const miniDiv = document.createElement('div');
             miniDiv.style.height = '200px';
+            miniDiv.className = 'mini-chart-canvas';
 
-            const plotData = [{
-                type: 'treemap',
-                ids: treemapData.ids,
-                labels: treemapData.labels,
-                parents: treemapData.parents,
-                values: treemapData.values,
-                marker: {
-                    colors: treemapData.colors,
-                    line: { width: 1.5, color: 'rgba(255,255,255,0.5)' },
-                    pad: { b: 4, l: 4, r: 4, t: 12 }
-                },
-                textfont: { family: 'Outfit, sans-serif', color: '#ffffff' },
-                textposition: 'top left',
-                textinfo: 'label+value',
-                hoverinfo: 'label+value+percent parent',
-                branchvalues: 'total'
-            }];
+            const plotData = buildTreemapTrace(treemapData);
 
             const maxBtn = document.createElement('button');
             maxBtn.className = 'maximize-btn';
             maxBtn.innerHTML = '⤢ Agrandir';
             maxBtn.title = 'Voir en plein écran';
             maxBtn.addEventListener('click', () => this._toggleFullScreenChart(plotData, miniLayout));
+            headerRow.appendChild(headerGroup);
             headerRow.appendChild(maxBtn);
 
             section.appendChild(headerRow);
@@ -1690,20 +1787,20 @@ export class UiRenderer {
         if (Object.keys(accomCounts).length > 0) {
             const totalAccom = Object.values(accomCounts).reduce((a, b) => a + b, 0);
             const accomTreemap = {
-                ids: ['AccomRoot'], labels: [`Total (${totalAccom})`], parents: [''], values: [totalAccom],
-                colors: ['#a78bfa']
+                ids: ['AccomRoot'], labels: ['Hebergements'], parents: [''], values: [totalAccom],
+                colors: ['rgba(167,139,250,0.25)']
             };
             const baseColors = ['#c4b5fd', '#a78bfa', '#8b5cf6', '#7c3aed', '#6d28d9', '#5b21b6', '#4c1d95', '#ddd6fe', '#ede9fe', '#e9d5ff', '#d8b4fe', '#b794f4', '#9f7aea', '#805ad5'];
             let ci = 0;
             Object.entries(accomCounts).sort((a, b) => b[1] - a[1]).forEach(([key, count]) => {
                 accomTreemap.ids.push(key);
-                accomTreemap.labels.push(`${accomTags[key]} (${count})`);
+                accomTreemap.labels.push(accomTags[key]);
                 accomTreemap.parents.push('AccomRoot');
                 accomTreemap.values.push(count);
                 accomTreemap.colors.push(baseColors[ci % baseColors.length]);
                 ci++;
             });
-            addMiniTreemap('Hébergements par type', '🏨', accomTreemap);
+            addMiniTreemap('Hebergements par type', accomTreemap, `${Object.keys(accomCounts).length} types`);
         }
 
         // ─── 2. Treemap Sentiers piétons par sac_scale ────────────────────
@@ -1724,18 +1821,18 @@ export class UiRenderer {
         if (Object.keys(sacCounts).length > 0) {
             const totalSac = Object.values(sacCounts).reduce((a, b) => a + b, 0);
             const sacTreemap = {
-                ids: ['SacRoot'], labels: [`Total (${totalSac})`], parents: [''], values: [totalSac],
-                colors: ['#34d399']
+                ids: ['SacRoot'], labels: ['Sentiers pietons'], parents: [''], values: [totalSac],
+                colors: ['rgba(52,211,153,0.25)']
             };
             const sacColors = { 'hiking': '#facc15', 'mountain_hiking': '#ef4444', 'demanding_mountain_hiking': '#dc2626', 'alpine_hiking': '#1e1e1e', 'demanding_alpine_hiking': '#000000' };
             Object.entries(sacCounts).sort((a, b) => b[1] - a[1]).forEach(([key, count]) => {
                 sacTreemap.ids.push(key);
-                sacTreemap.labels.push(`${sacLabels[key]} (${count})`);
+                sacTreemap.labels.push(sacLabels[key]);
                 sacTreemap.parents.push('SacRoot');
                 sacTreemap.values.push(count);
                 sacTreemap.colors.push(sacColors[key] || '#6ee7b7');
             });
-            addMiniTreemap('Sentiers piétons par difficulté', '🚶', sacTreemap);
+            addMiniTreemap('Sentiers pietons par difficulte', sacTreemap, `${Object.keys(sacCounts).length} niveaux`);
         }
 
         // ─── 3. Treemap Chemins vélo par catégorie ────────────────────────
@@ -1759,23 +1856,23 @@ export class UiRenderer {
         if (Object.keys(cycleCounts).length > 0) {
             const totalCycle = Object.values(cycleCounts).reduce((a, b) => a + b, 0);
             const cycleTreemap = {
-                ids: ['CycleRoot'], labels: [`Total (${totalCycle})`], parents: [''], values: [totalCycle],
-                colors: ['#60a5fa']
+                ids: ['CycleRoot'], labels: ['Offre cyclable'], parents: [''], values: [totalCycle],
+                colors: ['rgba(96,165,250,0.25)']
             };
             const cycleColors = { 'bicycle_routes': '#f97316', 'cycleways': '#3b82f6', 'tracks': '#854d0e' };
             Object.entries(cycleCounts).sort((a, b) => b[1] - a[1]).forEach(([key, count]) => {
                 cycleTreemap.ids.push(key);
-                cycleTreemap.labels.push(`${cycleCats[key]} (${count})`);
+                cycleTreemap.labels.push(cycleCats[key]);
                 cycleTreemap.parents.push('CycleRoot');
                 cycleTreemap.values.push(count);
                 cycleTreemap.colors.push(cycleColors[key] || '#93c5fd');
             });
-            addMiniTreemap('Chemins vélo par type', '🚴', cycleTreemap);
+            addMiniTreemap('Chemins velo par type', cycleTreemap, `${Object.keys(cycleCounts).length} segments`);
         }
 
         // ── SLOPE CHART : Ratio Sentiers Piétons vs Vélo ──────────────────
         const totalTrails = pedestrianTrailCount + cyclingTrailCount;
-        if (totalTrails > 0) {
+        if (false && totalTrails > 0) {
             const slopeSection = document.createElement('div');
             slopeSection.className = 'mini-treemap-section';
 
@@ -1784,7 +1881,7 @@ export class UiRenderer {
 
             const slopeHeader = document.createElement('span');
             slopeHeader.className = 'mini-treemap-title';
-            slopeHeader.textContent = '📊 Randonnée vs Cyclisme';
+            slopeHeader.textContent = 'Randonnee vs Cyclisme';
             slopeHeaderRow.appendChild(slopeHeader);
 
             const slopeDiv = document.createElement('div');
@@ -1799,7 +1896,7 @@ export class UiRenderer {
             const slopeData = [
                 // The connecting line
                 {
-                    x: ['Randonnée 🚶', 'Cyclisme 🚴'],
+                    x: ['Randonnee', 'Cyclisme'],
                     y: [pedestrianTrailCount, cyclingTrailCount],
                     mode: 'lines+markers+text',
                     type: 'scatter',
@@ -1852,6 +1949,114 @@ export class UiRenderer {
             infraContainer.appendChild(slopeSection);
 
             Plotly.newPlot(slopeDiv, slopeData, slopeLayout, miniConfig);
+        }
+
+        const offerMetrics = [
+            { label: 'Sentiers pietons', raw: pedestrianTrailCount, color: '#34d399' },
+            { label: 'Offre cyclable', raw: cyclingTrailCount, color: '#60a5fa' },
+            { label: 'Hebergements', raw: accommodationCount, color: '#a78bfa' },
+            { label: 'Acces transport', raw: transportTotal, color: '#fbbf24' },
+            { label: 'Services visiteurs', raw: servicesTotal, color: '#06b6d4' }
+        ]
+            .filter(item => item.raw > 0)
+            .map(item => ({
+                ...item,
+                metric: areaKm2 > 0 ? (item.raw / areaKm2) : item.raw
+            }))
+            .sort((a, b) => b.metric - a.metric);
+
+        if (offerMetrics.length > 1) {
+            const offerSection = document.createElement('div');
+            offerSection.className = 'mini-treemap-section';
+
+            const offerHeaderRow = document.createElement('div');
+            offerHeaderRow.className = 'mini-treemap-header';
+
+            const offerHeaderGroup = document.createElement('div');
+            offerHeaderGroup.className = 'mini-treemap-title-group';
+
+            const offerHeader = document.createElement('span');
+            offerHeader.className = 'mini-treemap-title';
+            offerHeader.textContent = areaKm2 > 0 ? 'Intensite de l offre' : 'Volume de l offre';
+            offerHeaderGroup.appendChild(offerHeader);
+
+            const offerMeta = document.createElement('span');
+            offerMeta.className = 'mini-treemap-meta';
+            offerMeta.textContent = areaKm2 > 0 ? 'normalise par km2' : 'comparaison brute';
+            offerHeaderGroup.appendChild(offerMeta);
+
+            const offerDiv = document.createElement('div');
+            offerDiv.style.height = '220px';
+            offerDiv.className = 'mini-chart-canvas';
+
+            const offerData = [{
+                type: 'bar',
+                orientation: 'h',
+                x: offerMetrics.map(item => item.metric),
+                y: offerMetrics.map(item => item.label),
+                marker: {
+                    color: offerMetrics.map(item => item.color),
+                    line: { color: 'rgba(255,255,255,0.18)', width: 1.2 }
+                },
+                text: offerMetrics.map(item => areaKm2 > 0
+                    ? `${formatChartMetric(item.metric)}/km2`
+                    : item.raw.toLocaleString('fr-FR')),
+                textposition: 'outside',
+                cliponaxis: false,
+                hovertemplate: areaKm2 > 0
+                    ? '<b>%{y}</b><br>%{x:.2f} / km2<br>%{customdata[0]} elements recenses<extra></extra>'
+                    : '<b>%{y}</b><br>%{x} elements recenses<extra></extra>',
+                customdata: offerMetrics.map(item => [item.raw.toLocaleString('fr-FR')])
+            }];
+
+            const offerLayout = {
+                margin: { t: 6, l: 108, r: 34, b: 28 },
+                paper_bgcolor: 'rgba(0,0,0,0)',
+                plot_bgcolor: 'rgba(0,0,0,0)',
+                font: { family: 'Outfit, sans-serif', color: '#fff', size: 11 },
+                xaxis: {
+                    showgrid: true,
+                    gridcolor: 'rgba(255,255,255,0.08)',
+                    zeroline: false,
+                    tickfont: { size: 10, color: 'rgba(255,255,255,0.55)' },
+                    title: areaKm2 > 0
+                        ? { text: 'elements / km2', font: { size: 10, color: 'rgba(255,255,255,0.5)' } }
+                        : undefined
+                },
+                yaxis: {
+                    automargin: true,
+                    autorange: 'reversed',
+                    tickfont: { size: 11, color: '#fff' }
+                },
+                bargap: 0.28,
+                showlegend: false,
+                hoverlabel: {
+                    bgcolor: 'rgba(5,10,18,0.92)',
+                    bordercolor: 'rgba(255,255,255,0.14)',
+                    font: { family: 'Outfit, sans-serif', color: '#ffffff', size: 11 }
+                }
+            };
+
+            const offerMaxBtn = document.createElement('button');
+            offerMaxBtn.className = 'maximize-btn';
+            offerMaxBtn.innerHTML = '⤢ Agrandir';
+            offerMaxBtn.title = 'Voir en plein écran';
+            offerMaxBtn.addEventListener('click', () => this._toggleFullScreenChart(offerData, offerLayout));
+            offerHeaderRow.appendChild(offerHeaderGroup);
+            offerHeaderRow.appendChild(offerMaxBtn);
+
+            const offerCaption = document.createElement('div');
+            offerCaption.className = 'mini-chart-caption';
+            offerCaption.textContent = areaKm2 > 0
+                ? 'Lecture normalisee pour comparer des zones de tailles differentes.'
+                : 'Comparaison directe des volumes recenses dans la zone active.';
+
+            offerSection.appendChild(offerHeaderRow);
+            offerSection.appendChild(offerDiv);
+            offerSection.appendChild(offerCaption);
+            infraContainer.appendChild(offerSection);
+
+            Plotly.newPlot(offerDiv, offerData, offerLayout, miniConfig);
         }
     }
 
@@ -1941,7 +2146,7 @@ export class UiRenderer {
 
                 <!-- OSM Static Block -->
                 <div class="poi-section">
-                    <div class="poi-section__title">📍 Informations</div>
+                    <div class="poi-section__title">Informations</div>
                     <div class="detail-info" id="poi-osm-block">
                         ${this._buildOsmRows(poi, color)}
                     </div>
@@ -1949,7 +2154,7 @@ export class UiRenderer {
 
                 <!-- Digital Data Block -->
                 <div class="poi-section">
-                    <div class="poi-section__title">💻 Données Digitales</div>
+                    <div class="poi-section__title">Données Digitales</div>
                     <div class="detail-info" id="poi-digital-block">
                         ${this._buildDigitalRows(poi, color)}
                     </div>
@@ -1968,13 +2173,13 @@ export class UiRenderer {
                 <div style="margin-top:16px;text-align:center;display:flex;justify-content:center;gap:15px;">
                     <a href="https://www.openstreetmap.org/node/${poi.id}" target="_blank"
                        style="font-size:0.75rem;color:var(--color-text-muted);text-decoration:none;opacity:0.7;">
-                       🗺️ Voir sur OpenStreetMap
+                       Voir sur OpenStreetMap
                     </a>
                     <span id="poi-wikipedia-bottom-link-container">
                         ${this._getWikipediaUrl(poi.tags) ? `
                             <a href="${this._getWikipediaUrl(poi.tags)}" target="_blank"
                                style="font-size:0.75rem;color:var(--color-text-muted);text-decoration:none;opacity:0.7;">
-                               📖 Voir sur Wikipédia
+                               Voir sur Wikipédia
                             </a>
                         ` : ''}
                     </span>
@@ -2010,11 +2215,11 @@ export class UiRenderer {
                     const website = poi.tags.website || poi.tags['contact:website'] || poi.tags.url || wikidataInfo?.website;
                     if (website) {
                         linksContainer.insertAdjacentHTML('beforeend',
-                            `<a href="${website}" target="_blank" class="icon-btn" title="Site Web">🌐</a>`);
+                            `<a href="${website}" target="_blank" class="icon-btn" title="Site Web">Site web</a>`);
                     }
                     if (wikidataInfo?.wikipedia) {
                         linksContainer.insertAdjacentHTML('beforeend',
-                            `<a href="${wikidataInfo.wikipedia}" target="_blank" class="icon-btn" title="Article Wikipédia">📖</a>`);
+                            `<a href="${wikidataInfo.wikipedia}" target="_blank" class="icon-btn" title="Article Wikipédia">Wikipédia</a>`);
 
                         // Update bottom link if it was missing or different
                         const bottomContainer = document.getElementById('poi-wikipedia-bottom-link-container');
@@ -2022,7 +2227,7 @@ export class UiRenderer {
                             bottomContainer.innerHTML = `
                                 <a href="${wikidataInfo.wikipedia}" target="_blank"
                                    style="font-size:0.75rem;color:var(--color-text-muted);text-decoration:none;opacity:0.7;">
-                                   📖 Voir sur Wikipédia
+                                   Voir sur Wikipédia
                                 </a>`;
                         }
                     }
@@ -2037,17 +2242,17 @@ export class UiRenderer {
                     </div>`);
                     }
                     if (wikidataInfo.population != null)
-                        rows.push(this._infoRow('👥 Population', wikidataInfo.population.toLocaleString('fr-FR') + ' hab.'));
+                        rows.push(this._infoRow('Population', wikidataInfo.population.toLocaleString('fr-FR') + ' hab.'));
                     if (wikidataInfo.elevation != null)
-                        rows.push(this._infoRow('⛰️ Altitude (Wikidata)', wikidataInfo.elevation + ' m'));
+                        rows.push(this._infoRow('Altitude', wikidataInfo.elevation + ' m'));
                     if (wikidataInfo.area != null)
-                        rows.push(this._infoRow('📐 Superficie', wikidataInfo.area.toLocaleString('fr-FR') + ' km²'));
+                        rows.push(this._infoRow('Superficie', wikidataInfo.area.toLocaleString('fr-FR') + ' km²'));
                     if (wikidataInfo.inception)
-                        rows.push(this._infoRow('📅 Fondé en', wikidataInfo.inception));
+                        rows.push(this._infoRow('Fondé en', wikidataInfo.inception));
                     if (wikidataInfo.heritage)
-                        rows.push(this._infoRow('🏛️ Classement', wikidataInfo.heritage));
+                        rows.push(this._infoRow('Classement', wikidataInfo.heritage));
                     if (wikidataInfo.architect)
-                        rows.push(this._infoRow('✏️ Architecte', wikidataInfo.architect));
+                        rows.push(this._infoRow('Architecte', wikidataInfo.architect));
 
                     if (rows.length > 0) {
                         const section = document.getElementById('poi-wikidata-section');
@@ -2091,29 +2296,29 @@ export class UiRenderer {
     _buildDigitalRows(poi, color) {
         const d = poi.digital || {};
         const rows = [];
-        
+
         const yesLabel = `<span style="color:#10b981;font-weight:bold;">Oui</span>`;
         const noLabel = `<span style="color:var(--color-text-muted);opacity:0.8;">Non</span>`;
-        
-        rows.push(this._infoRow('🌐 Site Web', d.hasWebsite ? yesLabel : noLabel));
-        rows.push(this._infoRow('📱 Réseaux Sociaux', d.hasSocialMedia ? yesLabel : noLabel));
-        rows.push(this._infoRow('🎒 Wikivoyage', d.hasWikivoyage ? yesLabel : noLabel));
-        
+
+        rows.push(this._infoRow('Site Web', d.hasWebsite ? yesLabel : noLabel));
+        rows.push(this._infoRow('Réseaux Sociaux', d.hasSocialMedia ? yesLabel : noLabel));
+        rows.push(this._infoRow('Wikivoyage', d.hasWikivoyage ? yesLabel : noLabel));
+
         let langLabel = '';
         if (d.wikidataLanguagesCount === null || d.wikidataLanguagesCount === undefined) {
-             if (poi.tags.wikidata) {
-                  langLabel = `<span style="color:var(--color-text-muted);font-style:italic;">Chargement...</span>`;
-             } else {
-                  langLabel = noLabel;
-             }
+            if (poi.tags.wikidata) {
+                langLabel = `<span style="color:var(--color-text-muted);font-style:italic;">Chargement...</span>`;
+            } else {
+                langLabel = noLabel;
+            }
         } else if (d.wikidataLanguagesCount === 0) {
-             langLabel = noLabel;
+            langLabel = noLabel;
         } else {
-             langLabel = `<span style="color:${color};font-weight:bold;">${d.wikidataLanguagesCount} langue(s)</span>`;
+            langLabel = `<span style="color:${color};font-weight:bold;">${d.wikidataLanguagesCount} langue(s)</span>`;
         }
-        
-        rows.push(this._infoRow('🌍 Langues', langLabel));
-        
+
+        rows.push(this._infoRow('Langues', langLabel));
+
         return rows.join('');
     }
 
@@ -2123,42 +2328,42 @@ export class UiRenderer {
         const rows = [];
 
         const address = this.formatAddress(t);
-        if (address) rows.push(this._infoRow('📬 Adresse', address));
+        if (address) rows.push(this._infoRow('Adresse', address));
 
         const phone = t.phone || t['contact:phone'];
-        if (phone) rows.push(this._infoRow('📞 Téléphone',
+        if (phone) rows.push(this._infoRow('Téléphone',
             `<a href="tel:${phone}" style="color:${color}">${phone}</a>`));
 
         const email = t.email || t['contact:email'];
-        if (email) rows.push(this._infoRow('✉️ Email',
+        if (email) rows.push(this._infoRow('Email',
             `<a href="mailto:${email}" style="color:${color}">${email}</a>`));
 
-        if (t.opening_hours) rows.push(this._infoRow('🕐 Horaires', this._renderOpeningHours(t.opening_hours)));
+        if (t.opening_hours) rows.push(this._infoRow('Horaires', this._renderOpeningHours(t.opening_hours)));
 
         const website = t.website || t['contact:website'] || t.url;
-        if (website) rows.push(this._infoRow('🌐 Site Web',
+        if (website) rows.push(this._infoRow('Site Web',
             `<a href="${website}" target="_blank" style="color:${color}">Ouvrir ↗</a>`));
 
-        if (t.cuisine) rows.push(this._infoRow('🍽️ Cuisine', t.cuisine.replace(/_/g, ' ')));
-        if (t.stars) rows.push(this._infoRow('⭐ Étoiles', t.stars));
-        if (t.operator) rows.push(this._infoRow('🏢 Opérateur', t.operator));
-        if (t.brand) rows.push(this._infoRow('🏷️ Enseigne', t.brand));
-        if (t.ele) rows.push(this._infoRow('⛰️ Altitude', t.ele + ' m'));
-        if (t.capacity) rows.push(this._infoRow('👤 Capacité', t.capacity + ' pers.'));
-        if (t.start_date) rows.push(this._infoRow('📅 Création', t.start_date));
-        if (t.fee) rows.push(this._infoRow('💰 Tarif', t.fee === 'yes' ? 'Payant' : t.fee === 'no' ? 'Gratuit' : t.fee));
-        if (t.access) rows.push(this._infoRow('🔒 Accès', t.access));
-        if (t.wheelchair) rows.push(this._infoRow('♿ Accessibilité',
-            t.wheelchair === 'yes' ? '✅ Accessible PMR' :
-                t.wheelchair === 'limited' ? '⚠️ Accès limité' : '❌ Non accessible'));
-        if (t.description) rows.push(this._infoRow('📝 Description', t.description));
+        if (t.cuisine) rows.push(this._infoRow('Cuisine', t.cuisine.replace(/_/g, ' ')));
+        if (t.stars) rows.push(this._infoRow('Étoiles', t.stars));
+        if (t.operator) rows.push(this._infoRow('Opérateur', t.operator));
+        if (t.brand) rows.push(this._infoRow('Enseigne', t.brand));
+        if (t.ele) rows.push(this._infoRow('Altitude', t.ele + ' m'));
+        if (t.capacity) rows.push(this._infoRow('Capacité', t.capacity + ' pers.'));
+        if (t.start_date) rows.push(this._infoRow('Création', t.start_date));
+        if (t.fee) rows.push(this._infoRow('Tarif', t.fee === 'yes' ? 'Payant' : t.fee === 'no' ? 'Gratuit' : t.fee));
+        if (t.access) rows.push(this._infoRow('Accès', t.access));
+        if (t.wheelchair) rows.push(this._infoRow('Accessibilité',
+            t.wheelchair === 'yes' ? 'Accessible PMR' :
+                t.wheelchair === 'limited' ? 'Accès limité' : 'Non accessible'));
+        if (t.description) rows.push(this._infoRow('Description', t.description));
         if (t.wikipedia && !t.wikidata) {
             const wikiTitle = t.wikipedia.replace(/^fr:/, '');
-            rows.push(this._infoRow('📖 Wikipédia',
+            rows.push(this._infoRow('Wikipédia',
                 `<a href="https://fr.wikipedia.org/wiki/${encodeURIComponent(wikiTitle)}" target="_blank" style="color:${color}">Voir l'article ↗</a>`));
         }
 
-        rows.push(this._infoRow('🌐 Coordonnées',
+        rows.push(this._infoRow('Coordonnées',
             `${poi.lat.toFixed(5)}, ${poi.lng.toFixed(5)}`));
 
         return rows.join('') || '<p style="color:var(--color-text-muted);font-size:0.85rem;">Aucune donnée OSM disponible.</p>';
@@ -2285,14 +2490,15 @@ export class UiRenderer {
         this.renderMicroList(filtered);
     }
     getCategoryEmoji(category) {
-        const emojis = {
-            'tourism': '📷', 'sustenance': '🍴', 'accommodation': '🛏️', 'amenity': '🚻',
-            'natural': '🌳', 'historic': '🏛️', 'leisure': '🎡', 'shop': '🛒',
-            'transport': '🚌', 'craft': '🎨', 'office': '💼',
-            'place': '📍', 'sport': '⚽', 'healthcare': '⚕️',
-            'other': '❓'
-        };
-        return emojis[category] || emojis['other'];
+        return "";
+        // const emojis = {
+        //     'tourism': '📷', 'sustenance': '🍴', 'accommodation': '🛏️', 'amenity': '🚻',
+        //     'natural': '🌳', 'historic': '🏛️', 'leisure': '🎡', 'shop': '🛒',
+        //     'transport': '🚌', 'craft': '🎨', 'office': '💼',
+        //     'place': '📍', 'sport': '⚽', 'healthcare': '⚕️',
+        //     'other': '❓'
+        // };
+        // return emojis[category] || emojis['other'];
     }
 
     translateType(type) {
@@ -2346,7 +2552,7 @@ export class UiRenderer {
         overlay.id = 'fullscreen-chart-overlay';
         overlay.innerHTML = `
             <div class="header">
-                 <div class="title">Statistiques Détaillées (Treemap)</div>
+                 <div class="title">Vue détaillé</div>
                  <button id="fullscreen-chart-button-close">Fermer ✕</button>
             </div>
             <div id="fullscreen-chart-container" class="chart-container"></div>
