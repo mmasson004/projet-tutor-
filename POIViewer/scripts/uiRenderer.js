@@ -1140,7 +1140,6 @@ export class UiRenderer {
         let displayedPopulation = '';
         let yearText = '';
 
-        // Stocker l'historique pour l'utiliser lors du tracé du sparkline plus tard
         this.currentDemoHistory = history;
 
         if (history && history.length > 0) {
@@ -1149,46 +1148,41 @@ export class UiRenderer {
             yearText = `(${latest.year})`;
 
             if (history.length > 1) {
-                // Comparer avec l'année précédente disponible
                 const previous = history[history.length - 2];
                 const diff = latest.population - previous.population;
                 const percent = ((diff / previous.population) * 100).toFixed(2);
                 const isPositive = diff >= 0;
-                const color = isPositive ? '#34d399' : '#f87171'; // Vert ou Rouge
+                const color = isPositive ? '#34d399' : '#f87171';
                 const sign = isPositive ? '+' : '';
 
                 variationHtml = `
-                    <div style="text-align: right; margin-left: auto;">
-                        <div style="font-size: 1.1rem; color: ${color}; font-weight: bold;">${sign}${percent}%</div>
-                        <div style="font-size: 0.75rem; color: var(--color-text-muted);">depuis ${previous.year}</div>
-                    </div>
-                `;
-
-                // Préparer le conteneur pour le sparkline
-                sparklineHtml = `<div id="sparkline-container" style="width: 120px; height: 50px; margin-left: 20px;"></div>`;
+                    <div class="demo-kpi__variation">
+                        <div class="demo-kpi__pct" style="color:${color};">${sign}${percent}%</div>
+                        <div class="demo-kpi__since">depuis ${previous.year}</div>
+                    </div>`;
+                sparklineHtml = `<div id="sparkline-container" style="width:100px;height:40px;margin-left:16px;"></div>`;
             }
         } else if (osmPopulation) {
             displayedPopulation = osmPopulation.toLocaleString('fr-FR');
             yearText = `(Source OpenStreetMap)`;
             variationHtml = `
-                <div style="text-align: right; margin-left: auto; font-size: 0.75rem; color: var(--color-text-muted); opacity: 0.8; font-style: italic;">
-                    Aucun historique<br>disponible
+                <div class="demo-kpi__variation" style="opacity:0.7;font-style:italic;">
+                    <div class="demo-kpi__since">Aucun historique<br>disponible</div>
                 </div>`;
         } else {
             return '';
         }
 
         return `
-            <div class="kpi-card glass-panel" style="background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 12px; padding: 16px; margin-bottom: 16px; display: flex; align-items: center;">
-                <div style="flex-shrink: 0;">
-                    <div style="font-size: 0.8rem; color: var(--color-text-muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px;">👥 Résidents <span style="font-size:0.75rem">${yearText}</span></div>
-                    <div style="font-size: 1.8rem; font-weight: 700; color: #fff; line-height: 1;">${displayedPopulation}</div>
-                    <div style="font-size: 0.8rem; color: var(--color-primary); margin-top: 4px;">${zoneName}</div>
+            <div class="demo-kpi">
+                <div class="demo-kpi__main">
+                    <div class="demo-kpi__label">👥 Résidents <span style="font-size:0.66rem">${yearText}</span></div>
+                    <div class="demo-kpi__value">${displayedPopulation}</div>
+                    <div class="demo-kpi__zone">${zoneName}</div>
                 </div>
                 ${sparklineHtml}
                 ${variationHtml}
-            </div>
-        `;
+            </div>`;
     }
 
     /**
@@ -1304,139 +1298,92 @@ export class UiRenderer {
         });
 
         // ── KPI Cards HTML ─────────────────────────────────────────────────
-        const kpiCardStyle = `background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);border-radius:12px;padding:14px 16px;display:flex;align-items:center;justify-content:space-between;`;
-        const kpiValueStyle = `font-size:1.6rem;font-weight:700;color:#fff;line-height:1;`;
-        const kpiLabelStyle = `font-size:0.75rem;color:var(--color-text-muted);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:4px;`;
-        const kpiSubStyle = `font-size:0.8rem;color:var(--color-text-muted);margin-top:4px;`;
-
         let accommodationHtml = '';
         if (inseeStats) {
-            // Utiliser les données de l'INSEE pour l'hébergement
+            const starsHtml = Object.entries(inseeStats.hotel_stars).filter(([k,v]) => v > 0)
+                .map(([k,v]) => `<span class="kpi-star-badge">${k === 'NC' ? 'NC' : k + '★'}: ${v}</span>`).join('')
+                || '<span class="kpi-sub">Aucun classé</span>';
             accommodationHtml = `
-                <div class="kpi-card glass-panel" style="${kpiCardStyle}border-color:rgba(167,139,250,0.35);background:rgba(167,139,250,0.08);grid-column: span 2; display:flex; flex-direction:column; align-items:flex-start;">
-                    <div style="width:100%; display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-                        <div>
-                            <div style="${kpiLabelStyle}">🌟 Données INSEE 2026 : Nombre total d’hébergements dans la zone = Nombre de hôtels + Nombre de Camping + Nombre Hébergement collectifs</div>
-                            <div style="${kpiValueStyle}">${inseeStats.total_loc.toLocaleString('fr-FR')}</div>
+                <div class="kpi-card kpi-card--col kpi-card--purple" style="margin-bottom:6px;">
+                    <div class="kpi-label">🌟 Hébergements INSEE 2026</div>
+                    <div class="kpi-value">${inseeStats.total_loc.toLocaleString('fr-FR')}</div>
+                    <div class="kpi-grid kpi-grid--3" style="width:100%;margin-top:6px;">
+                        <div class="kpi-sub-item">
+                            <div class="kpi-sub-item__label">🏨 Hôtels</div>
+                            <div class="kpi-sub-item__value">${inseeStats.hotel_beds.toLocaleString('fr-FR')} lits</div>
+                        </div>
+                        <div class="kpi-sub-item">
+                            <div class="kpi-sub-item__label">⛺ Campings</div>
+                            <div class="kpi-sub-item__value">${inseeStats.camping_beds.toLocaleString('fr-FR')} lits</div>
+                        </div>
+                        <div class="kpi-sub-item">
+                            <div class="kpi-sub-item__label">🏘️ Collectifs</div>
+                            <div class="kpi-sub-item__value">${inseeStats.collective_beds.toLocaleString('fr-FR')} lits</div>
                         </div>
                     </div>
-                    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px; width:100%;">
-                        <div style="background:rgba(255,255,255,0.05); padding:8px; border-radius:8px;">
-                            <div style="font-size:0.75rem;color:var(--color-text-muted);margin-bottom:2px;">🏨 Lits dans les hôtels = nombre chambres totales x 2</div>
-                            <div style="font-size:1.1rem;font-weight:700;color:#fff;">${inseeStats.hotel_beds.toLocaleString('fr-FR')} lits</div>
-                        </div>
-                        <div style="background:rgba(255,255,255,0.05); padding:8px; border-radius:8px;">
-                            <div style="font-size:0.75rem;color:var(--color-text-muted);margin-bottom:2px;">⛺ Lits dans les campings = nombre emplacements x 3</div>
-                            <div style="font-size:1.1rem;font-weight:700;color:#fff;">${inseeStats.camping_beds.toLocaleString('fr-FR')} lits</div>
-                        </div>
-                        <div style="background:rgba(255,255,255,0.05); padding:8px; border-radius:8px;">
-                            <div style="font-size:0.75rem;color:var(--color-text-muted);margin-bottom:2px;">🏘️ Lits dans les hébergements collectifs = prendre le nombnre de lit dans l'hébergement collectif</div>
-                            <div style="font-size:1.1rem;font-weight:700;color:#fff;">${inseeStats.collective_beds.toLocaleString('fr-FR')} lits</div>
-                        </div>
-                    </div>
-                    
-                    <div style="margin-top:12px; font-size:0.75rem; width:100%;">
-                        <div style="color:var(--color-text-muted); margin-bottom:4px;">⭐ Répartition par étoiles (UNIT_LOC pour I551 et I553 pour chaque étoile 1 à 5 et NC) :</div>
-                        <div style="display:flex; gap:6px; flex-wrap:wrap;">
-                            ${Object.entries(inseeStats.hotel_stars).filter(([k,v]) => v > 0).map(([k,v]) => `<span style="background:rgba(251,191,36,0.2);color:#fcd34d;padding:2px 6px;border-radius:4px;">${k === 'NC' ? 'Non Classé' : k + '⭐'}: ${v}</span>`).join('') || '<span style="color:var(--color-text-muted);">Aucun classé</span>'}
-                        </div>
-                    </div>
-                </div>
-            `;
+                    <div class="kpi-stars">${starsHtml}</div>
+                </div>`;
         } else {
-            // Affichage par défaut (OSM)
             accommodationHtml = `
-                <div class="kpi-card glass-panel" style="${kpiCardStyle}border-color:rgba(167,139,250,0.35);background:rgba(167,139,250,0.08);grid-column: span 2; display:flex; flex-direction:column; align-items:flex-start;">
-                    <div style="width:100%; display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-                        <div>
-                            <div style="${kpiLabelStyle}">🌟 Données INSEE 2026 : Nombre total d’hébergements dans la zone = Nombre de hôtels + Nombre de Camping + Nombre Hébergement collectifs</div>
-                            <div style="${kpiValueStyle}">Donnée Indisponible</div>
-                        </div>
+                <div class="kpi-card kpi-card--col kpi-card--purple" style="margin-bottom:6px;">
+                    <div class="kpi-label">🌟 Hébergements INSEE 2026</div>
+                    <div class="kpi-value" style="opacity:0.4;">Indisponible</div>
+                    <div class="kpi-grid kpi-grid--3" style="width:100%;margin-top:6px;">
+                        <div class="kpi-sub-item"><div class="kpi-sub-item__label">🏨 Hôtels</div><div class="kpi-sub-item__value" style="opacity:0.3;">N/A</div></div>
+                        <div class="kpi-sub-item"><div class="kpi-sub-item__label">⛺ Campings</div><div class="kpi-sub-item__value" style="opacity:0.3;">N/A</div></div>
+                        <div class="kpi-sub-item"><div class="kpi-sub-item__label">🏘️ Collectifs</div><div class="kpi-sub-item__value" style="opacity:0.3;">N/A</div></div>
                     </div>
-                    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px; width:100%;">
-                        <div style="background:rgba(255,255,255,0.05); padding:8px; border-radius:8px;">
-                            <div style="font-size:0.75rem;color:var(--color-text-muted);margin-bottom:2px;">🏨 Lits dans les hôtels = nombre chambres totales x 2</div>
-                            <div style="font-size:1.1rem;font-weight:700;color:#fff;">N/A</div>
-                        </div>
-                        <div style="background:rgba(255,255,255,0.05); padding:8px; border-radius:8px;">
-                            <div style="font-size:0.75rem;color:var(--color-text-muted);margin-bottom:2px;">⛺ Lits dans les campings = nombre emplacements x 3</div>
-                            <div style="font-size:1.1rem;font-weight:700;color:#fff;">N/A</div>
-                        </div>
-                        <div style="background:rgba(255,255,255,0.05); padding:8px; border-radius:8px;">
-                            <div style="font-size:0.75rem;color:var(--color-text-muted);margin-bottom:2px;">🏘️ Lits dans les hébergements collectifs = prendre le nombnre de lit dans l'hébergement collectif</div>
-                            <div style="font-size:1.1rem;font-weight:700;color:#fff;">N/A</div>
-                        </div>
-                    </div>
-                    
-                    <div style="margin-top:12px; font-size:0.75rem; width:100%;">
-                        <div style="color:var(--color-text-muted); margin-bottom:4px;">⭐ Répartition par étoiles (UNIT_LOC pour I551 et I553 pour chaque étoile 1 à 5 et NC) :</div>
-                        <div style="display:flex; gap:6px; flex-wrap:wrap;">
-                            <span style="color:var(--color-text-muted);">Non disponible pour cette zone</span>
-                        </div>
-                    </div>
-                </div>
-            `;
+                </div>`;
         }
 
         // ── Build section contents ─────────────────────────────────────────
-
-        // Section 1: Informations générales (population + density + heatmap) — built later with densityHtml
-        // Section 3: Tourisme (INSEE accommodation + sentiers/pistes KPIs)
         const trailsHtml = `
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px;">
-                <div class="kpi-card glass-panel" style="${kpiCardStyle}border-color:rgba(5,150,105,0.35);background:rgba(5,150,105,0.08);">
-                    <div>
-                        <div style="${kpiLabelStyle}">🚶 Sentiers piétons</div>
-                        <div style="${kpiValueStyle}">${pedestrianTrailCount.toLocaleString('fr-FR')}</div>
-                        <div style="${kpiSubStyle}">chemins & randos confondus</div>
-                    </div>
+            <div class="kpi-grid kpi-grid--2" style="margin-top:6px;">
+                <div class="kpi-card kpi-card--col kpi-card--green">
+                    <div class="kpi-label">🚶 Sentiers piétons</div>
+                    <div class="kpi-value">${pedestrianTrailCount.toLocaleString('fr-FR')}</div>
+                    <div class="kpi-sub">chemins & randos</div>
                 </div>
-                <div class="kpi-card glass-panel" style="${kpiCardStyle}border-color:rgba(59,130,246,0.35);background:rgba(59,130,246,0.08);">
-                    <div>
-                        <div style="${kpiLabelStyle}">🚴 Pistes cyclables</div>
-                        <div style="${kpiValueStyle}">${cyclingTrailCount.toLocaleString('fr-FR')}</div>
-                        <div style="${kpiSubStyle}">voies dans la zone</div>
-                    </div>
+                <div class="kpi-card kpi-card--col kpi-card--blue">
+                    <div class="kpi-label">🚴 Pistes cyclables</div>
+                    <div class="kpi-value">${cyclingTrailCount.toLocaleString('fr-FR')}</div>
+                    <div class="kpi-sub">voies dans la zone</div>
                 </div>
-            </div>
-        `;
+            </div>`;
         const section3Html = accommodationHtml + trailsHtml;
 
-        // Section 4: Marketing digitale
+        // Section 4: Marketing digital
         const section4Html = `
-            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
-                <div class="kpi-card glass-panel" style="${kpiCardStyle}border-color:rgba(16,185,129,0.35);background:rgba(16,185,129,0.08);flex-direction:column;align-items:flex-start;">
-                    <div style="${kpiLabelStyle}">🌐 Sites Web</div>
-                    <div style="${kpiValueStyle}">${websiteCount.toLocaleString('fr-FR')}</div>
-                    <div style="${kpiSubStyle}">${total > 0 ? ((websiteCount / total) * 100).toFixed(1) : 0}% des affichés</div>
+            <div class="kpi-grid kpi-grid--3">
+                <div class="kpi-card kpi-card--col kpi-card--emerald">
+                    <div class="kpi-label">🌐 Sites Web</div>
+                    <div class="kpi-value">${websiteCount.toLocaleString('fr-FR')}</div>
+                    <div class="kpi-sub">${total > 0 ? ((websiteCount / total) * 100).toFixed(1) : 0}%</div>
                 </div>
-                <div class="kpi-card glass-panel" style="${kpiCardStyle}border-color:rgba(236,72,153,0.35);background:rgba(236,72,153,0.08);flex-direction:column;align-items:flex-start;">
-                    <div style="${kpiLabelStyle}">📱 Réseaux Sociaux</div>
-                    <div style="${kpiValueStyle}">${socialMediaCount.toLocaleString('fr-FR')}</div>
-                    <div style="${kpiSubStyle}">${total > 0 ? ((socialMediaCount / total) * 100).toFixed(1) : 0}% des affichés</div>
+                <div class="kpi-card kpi-card--col kpi-card--pink">
+                    <div class="kpi-label">📱 Réseaux Soc.</div>
+                    <div class="kpi-value">${socialMediaCount.toLocaleString('fr-FR')}</div>
+                    <div class="kpi-sub">${total > 0 ? ((socialMediaCount / total) * 100).toFixed(1) : 0}%</div>
                 </div>
-                <div class="kpi-card glass-panel" style="${kpiCardStyle}border-color:rgba(245,158,11,0.35);background:rgba(245,158,11,0.08);flex-direction:column;align-items:flex-start;">
-                    <div style="${kpiLabelStyle}">🎒 Wikivoyage</div>
-                    <div style="${kpiValueStyle}">${wikivoyageCount.toLocaleString('fr-FR')}</div>
-                    <div style="${kpiSubStyle}">${total > 0 ? ((wikivoyageCount / total) * 100).toFixed(1) : 0}% des affichés</div>
+                <div class="kpi-card kpi-card--col kpi-card--amber">
+                    <div class="kpi-label">🎒 Wikivoyage</div>
+                    <div class="kpi-value">${wikivoyageCount.toLocaleString('fr-FR')}</div>
+                    <div class="kpi-sub">${total > 0 ? ((wikivoyageCount / total) * 100).toFixed(1) : 0}%</div>
                 </div>
-            </div>
-        `;
+            </div>`;
 
         // ── Collapsible Section Helper ────────────────────────────────────
-        const sectionToggleStyle = `width:100%;display:flex;justify-content:space-between;align-items:center;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);border-radius:10px;color:#fff;padding:10px 14px;cursor:pointer;font-family:"Google Sans",sans-serif;font-size:0.85rem;font-weight:600;transition:background 0.2s ease;margin-bottom:0;`;
         const buildCollapsibleSection = (title, emoji, contentHtml, sectionId, defaultOpen = true) => {
             return `
-                <div class="macro-section" style="margin-bottom:12px;">
-                    <button class="macro-section-toggle" data-section="${sectionId}" style="${sectionToggleStyle}">
+                <div class="macro-section">
+                    <button class="macro-section-toggle" data-section="${sectionId}">
                         <span>${emoji} ${title}</span>
-                        <span class="macro-section-chevron" style="font-size:0.7rem;opacity:0.6;transition:transform 0.2s ease;${defaultOpen ? 'transform:rotate(180deg);' : ''}">▾</span>
+                        <span class="macro-section-chevron" ${defaultOpen ? 'style="transform:rotate(180deg)"' : ''}>▾</span>
                     </button>
-                    <div class="macro-section-body" id="${sectionId}" style="padding:10px 0 0 0;${defaultOpen ? '' : 'display:none;'}">
+                    <div class="macro-section-body" id="${sectionId}" ${defaultOpen ? '' : 'style="display:none"'}>
                         ${contentHtml}
                     </div>
-                </div>
-            `;
+                </div>`;
         };
 
         // ── Densité Heatmap ────────────────────────────────────────────────
@@ -1445,113 +1392,97 @@ export class UiRenderer {
             const accomDensity = accommodationCount / areaKm2;
             const pedDensity = pedestrianTrailCount / areaKm2;
             const cycleDensity = cyclingTrailCount / areaKm2;
-
-            // Fonction pour limiter la barre entre 0 et 100%
-            // On utilise un seuil adaptatif : le max des 3 densités or 1 minimum
             const maxDensity = Math.max(accomDensity, pedDensity, cycleDensity, 0.1);
 
             const densityBar = (label, emoji, value, color, colorRgb) => {
                 const pct = Math.min((value / maxDensity) * 100, 100);
                 const formatted = value < 0.01 ? value.toExponential(1) : value.toFixed(2);
                 return `
-                    <div style="margin-bottom:10px;">
-                        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px;">
-                            <span style="font-size:0.8rem;color:#fff;">${emoji} ${label}</span>
-                            <span style="font-size:0.85rem;font-weight:600;color:${color};">${formatted} <span style="font-size:0.7rem;font-weight:400;color:var(--color-text-muted);">/ km²</span></span>
+                    <div class="density-bar">
+                        <div class="density-bar__header">
+                            <span class="density-bar__label">${emoji} ${label}</span>
+                            <span class="density-bar__value" style="color:${color};">${formatted} <span class="density-bar__unit">/ km²</span></span>
                         </div>
-                        <div style="background:rgba(255,255,255,0.08);border-radius:6px;height:8px;overflow:hidden;">
-                            <div style="height:100%;width:${pct}%;border-radius:6px;background:linear-gradient(90deg, rgba(${colorRgb},0.4), rgba(${colorRgb},1));transition:width 0.6s ease;"></div>
+                        <div class="density-bar__track">
+                            <div class="density-bar__fill" style="width:${pct}%;background:linear-gradient(90deg,rgba(${colorRgb},0.4),rgba(${colorRgb},1));"></div>
                         </div>
                     </div>`;
             };
 
             densityHtml = `
-                <div id="density-heatmap-panel" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:14px 16px;margin-bottom:16px;">
-                    <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:12px;">
-                        <span style="font-size:0.8rem;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:0.04em;">🗺️ Densité par km²</span>
-                        <span style="font-size:0.75rem;color:var(--color-text-muted);">Surface : ${areaKm2.toFixed(1)} km²</span>
+                <div id="density-heatmap-panel" class="density-panel">
+                    <div class="density-panel__title">
+                        <span>🗺️ Densité par km²</span>
+                        <span class="density-bar__unit">Surface : ${areaKm2.toFixed(1)} km²</span>
                     </div>
                     ${densityBar('Hébergements', '🏨', accomDensity, '#a78bfa', '167,139,250')}
                     ${densityBar('Sentiers piétons', '🚶', pedDensity, '#34d399', '5,150,105')}
                     ${densityBar('Pistes cyclables', '🚴', cycleDensity, '#60a5fa', '59,130,246')}
-                    <div style="margin-top:12px;padding-top:10px;border-top:1px solid rgba(255,255,255,0.08);">
-                        <div style="font-size:0.75rem;font-weight:600;color:var(--color-text-muted);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:8px;">🔥 Heatmap sur la carte</div>
-                        <div style="display:flex;gap:12px;flex-wrap:wrap;">
-                            <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:0.8rem;color:#fff;">
+                    <div class="heatmap-toggles">
+                        <div class="heatmap-toggles__title">🔥 Heatmap sur la carte</div>
+                        <div class="heatmap-toggles__row">
+                            <label class="heatmap-toggle-label">
                                 <input type="checkbox" class="heatmap-toggle" data-heat="accommodation" style="accent-color:#a78bfa;">
-                                <span style="width:8px;height:8px;border-radius:50%;background:#a78bfa;display:inline-block;"></span>
-                                Héberg.
+                                <span class="heatmap-dot" style="background:#a78bfa;"></span> Héberg.
                             </label>
-                            <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:0.8rem;color:#fff;">
+                            <label class="heatmap-toggle-label">
                                 <input type="checkbox" class="heatmap-toggle" data-heat="pedestrian" style="accent-color:#34d399;">
-                                <span style="width:8px;height:8px;border-radius:50%;background:#34d399;display:inline-block;"></span>
-                                Piétons
+                                <span class="heatmap-dot" style="background:#34d399;"></span> Piétons
                             </label>
-                            <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:0.8rem;color:#fff;">
+                            <label class="heatmap-toggle-label">
                                 <input type="checkbox" class="heatmap-toggle" data-heat="cycling" style="accent-color:#60a5fa;">
-                                <span style="width:8px;height:8px;border-radius:50%;background:#60a5fa;display:inline-block;"></span>
-                                Vélo
+                                <span class="heatmap-dot" style="background:#60a5fa;"></span> Vélo
                             </label>
                         </div>
                     </div>
-                </div>
-            `;
+                </div>`;
         }
 
-        // Si aucun POI après filtrage, afficher quand même les sections + message vide
+        // ── Helper: infra KPI block (réutilisé dans les 2 branches) ──────
+        const buildInfraKpis = () => {
+            let html = `
+                <div class="kpi-grid kpi-grid--3" style="margin-bottom:6px;">
+                    <div class="kpi-card kpi-card--col kpi-card--amber"><div class="kpi-label">🚌 Arrêts de bus</div><div class="kpi-value">${busStopCount.toLocaleString('fr-FR')}</div></div>
+                    <div class="kpi-card kpi-card--col kpi-card--violet"><div class="kpi-label">🚆 Gares</div><div class="kpi-value">${trainStationCount.toLocaleString('fr-FR')}</div></div>
+                    <div class="kpi-card kpi-card--col kpi-card--sky"><div class="kpi-label">✈️ Aéroports</div><div class="kpi-value">${airportCount.toLocaleString('fr-FR')}</div></div>
+                </div>`;
+            if (areaKm2 > 0) {
+                html += `
+                <div class="transport-density">
+                    <div class="transport-density__title">📍 Densité transport / km²</div>
+                    <div class="transport-density__grid">
+                        <div><div class="transport-density__label">🚌 Bus</div><div class="transport-density__value" style="color:#fbbf24;">${(busStopCount / areaKm2).toFixed(2)}</div></div>
+                        <div><div class="transport-density__label">🚆 Gares</div><div class="transport-density__value" style="color:#8b5cf6;">${(trainStationCount / areaKm2).toFixed(2)}</div></div>
+                        <div><div class="transport-density__label">✈️ Aéro.</div><div class="transport-density__value" style="color:#0ea5e9;">${(airportCount / areaKm2).toFixed(2)}</div></div>
+                    </div>
+                </div>`;
+            }
+            html += `
+                <div class="kpi-grid kpi-grid--3" style="margin-bottom:6px;">
+                    <div class="kpi-card kpi-card--col kpi-card--slate"><div class="kpi-label">🅿️ Stationnements</div><div class="kpi-value">${parkingCount.toLocaleString('fr-FR')}</div></div>
+                    <div class="kpi-card kpi-card--col kpi-card--cyan"><div class="kpi-label">🚻 Sanitaires</div><div class="kpi-value">${sanitaryCount.toLocaleString('fr-FR')}</div></div>
+                    <div class="kpi-card kpi-card--col kpi-card--lime"><div class="kpi-label">🔌 Bornes recharge</div><div class="kpi-value">${chargingCount.toLocaleString('fr-FR')}</div></div>
+                </div>`;
+            return html;
+        };
+
+        // Si aucun POI après filtrage
         if (total === 0) {
-            const areaHtml = areaKm2 > 0 ? `<div class="kpi-card glass-panel" style="${kpiCardStyle}border-color:rgba(59,130,246,0.35);background:rgba(59,130,246,0.08);margin-bottom:10px;"><div><div style="${kpiLabelStyle}">📐 Superficie de la zone</div><div style="${kpiValueStyle}">${areaKm2.toFixed(2)} km²</div></div></div>` : '';
+            const areaHtml = areaKm2 > 0 ? `<div class="kpi-card kpi-card--blue" style="margin-bottom:6px;"><div><div class="kpi-label">📐 Superficie</div><div class="kpi-value">${areaKm2.toFixed(2)} km²</div></div></div>` : '';
             const section1Html = areaHtml + demoHtml + densityHtml;
-            const infraKpisHtml = `
-                <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:10px;">
-                    <div class="kpi-card glass-panel" style="${kpiCardStyle}border-color:rgba(251,191,36,0.35);background:rgba(251,191,36,0.08);flex-direction:column;align-items:flex-start;">
-                        <div style="${kpiLabelStyle}">🚌 Arrêts de bus</div>
-                        <div style="${kpiValueStyle}">${busStopCount.toLocaleString('fr-FR')}</div>
-                    </div>
-                    <div class="kpi-card glass-panel" style="${kpiCardStyle}border-color:rgba(139,92,246,0.35);background:rgba(139,92,246,0.08);flex-direction:column;align-items:flex-start;">
-                        <div style="${kpiLabelStyle}">🚆 Gares</div>
-                        <div style="${kpiValueStyle}">${trainStationCount.toLocaleString('fr-FR')}</div>
-                    </div>
-                    <div class="kpi-card glass-panel" style="${kpiCardStyle}border-color:rgba(14,165,233,0.35);background:rgba(14,165,233,0.08);flex-direction:column;align-items:flex-start;">
-                        <div style="${kpiLabelStyle}">✈️ Aéroports</div>
-                        <div style="${kpiValueStyle}">${airportCount.toLocaleString('fr-FR')}</div>
-                    </div>
-                </div>
-                ${areaKm2 > 0 ? `<div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:12px;margin-bottom:10px;">
-                    <div style="font-size:0.8rem;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:8px;">📍 Densité transport / km²</div>
-                    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;">
-                        <div style="text-align:center;"><div style="font-size:0.7rem;color:var(--color-text-muted);">🚌 Bus</div><div style="font-size:1rem;font-weight:700;color:#fbbf24;">${(busStopCount / areaKm2).toFixed(2)}</div></div>
-                        <div style="text-align:center;"><div style="font-size:0.7rem;color:var(--color-text-muted);">🚆 Gares</div><div style="font-size:1rem;font-weight:700;color:#8b5cf6;">${(trainStationCount / areaKm2).toFixed(2)}</div></div>
-                        <div style="text-align:center;"><div style="font-size:0.7rem;color:var(--color-text-muted);">✈️ Aéro.</div><div style="font-size:1rem;font-weight:700;color:#0ea5e9;">${(airportCount / areaKm2).toFixed(2)}</div></div>
-                    </div>
-                </div>` : ''}
-                <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:10px;">
-                    <div class="kpi-card glass-panel" style="${kpiCardStyle}border-color:rgba(100,116,139,0.35);background:rgba(100,116,139,0.08);flex-direction:column;align-items:flex-start;">
-                        <div style="${kpiLabelStyle}">🅿️ Stationnements</div>
-                        <div style="${kpiValueStyle}">${parkingCount.toLocaleString('fr-FR')}</div>
-                    </div>
-                    <div class="kpi-card glass-panel" style="${kpiCardStyle}border-color:rgba(6,182,212,0.35);background:rgba(6,182,212,0.08);flex-direction:column;align-items:flex-start;">
-                        <div style="${kpiLabelStyle}">🚻 Équipements sanitaires</div>
-                        <div style="${kpiValueStyle}">${sanitaryCount.toLocaleString('fr-FR')}</div>
-                    </div>
-                    <div class="kpi-card glass-panel" style="${kpiCardStyle}border-color:rgba(34,197,94,0.35);background:rgba(34,197,94,0.08);flex-direction:column;align-items:flex-start;">
-                        <div style="${kpiLabelStyle}">🔌 Bornes de recharge</div>
-                        <div style="${kpiValueStyle}">${chargingCount.toLocaleString('fr-FR')}</div>
-                    </div>
-                </div>
-            `;
+            const infraKpisHtml = buildInfraKpis() + '<div id="section-infra-content"></div>';
             const countLabel = totalRaw > 0
                 ? `${totalRaw.toLocaleString('fr-FR')} POI${totalRaw > 1 ? 's' : ''} trouvé${totalRaw > 1 ? 's' : ''}`
                 : 'POIs disponibles';
             this.macroStats.innerHTML =
                 buildCollapsibleSection('Informations générales', '📊', section1Html, 'section-info', true) +
-                buildCollapsibleSection('Infrastructure \& activités', '🗺️', infraKpisHtml, 'section-infra', true) +
+                buildCollapsibleSection('Infrastructure & activités', '🗺️', infraKpisHtml, 'section-infra', true) +
                 buildCollapsibleSection('Tourisme', '🏨', section3Html, 'section-tourisme', true) +
-                buildCollapsibleSection('Marketing digitale', '📱', section4Html, 'section-marketing', false) +
-                `<div class="stat-item empty" style="text-align:center;padding:18px 12px;">
-                    <span style="font-size:2rem;">🔍</span>
-                    <div style="margin-top:8px;font-size:0.95rem;font-weight:600;color:var(--color-text);">${countLabel} — aucun affiché</div>
-                    <div style="margin-top:6px;font-size:0.8rem;color:var(--color-text-muted);">Activez au moins une catégorie dans les filtres pour visualiser les lieux sur la carte.</div>
+                buildCollapsibleSection('Marketing digital', '📱', section4Html, 'section-marketing', false) +
+                `<div class="stat-item empty">
+                    <span style="font-size:1.5rem;">🔍</span>
+                    <div class="kpi-label" style="margin-top:6px;font-size:0.82rem;font-weight:600;color:var(--color-text);">${countLabel} — aucun affiché</div>
+                    <div class="kpi-sub">Activez une catégorie dans les filtres.</div>
                 </div>`;
             this._bindCollapsibleSections();
             this._bindHeatmapToggles();
@@ -1636,47 +1567,9 @@ export class UiRenderer {
         const config = { responsive: true, displayModeBar: false };
 
         // ── Assemble the 4 sections ────────────────────────────────────────
-        const areaHtml = areaKm2 > 0 ? `<div class="kpi-card glass-panel" style="${kpiCardStyle}border-color:rgba(59,130,246,0.35);background:rgba(59,130,246,0.08);margin-bottom:10px;"><div><div style="${kpiLabelStyle}">📐 Superficie de la zone</div><div style="${kpiValueStyle}">${areaKm2.toFixed(2)} km²</div></div></div>` : '';
+        const areaHtml = areaKm2 > 0 ? `<div class="kpi-card kpi-card--blue" style="margin-bottom:6px;"><div><div class="kpi-label">📐 Superficie</div><div class="kpi-value">${areaKm2.toFixed(2)} km²</div></div></div>` : '';
         const section1Html = areaHtml + demoHtml + densityHtml;
-        const infraKpisHtml = `
-            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:10px;">
-                <div class="kpi-card glass-panel" style="${kpiCardStyle}border-color:rgba(251,191,36,0.35);background:rgba(251,191,36,0.08);flex-direction:column;align-items:flex-start;">
-                    <div style="${kpiLabelStyle}">🚌 Arrêts de bus</div>
-                    <div style="${kpiValueStyle}">${busStopCount.toLocaleString('fr-FR')}</div>
-                </div>
-                <div class="kpi-card glass-panel" style="${kpiCardStyle}border-color:rgba(139,92,246,0.35);background:rgba(139,92,246,0.08);flex-direction:column;align-items:flex-start;">
-                    <div style="${kpiLabelStyle}">🚆 Gares</div>
-                    <div style="${kpiValueStyle}">${trainStationCount.toLocaleString('fr-FR')}</div>
-                </div>
-                <div class="kpi-card glass-panel" style="${kpiCardStyle}border-color:rgba(14,165,233,0.35);background:rgba(14,165,233,0.08);flex-direction:column;align-items:flex-start;">
-                    <div style="${kpiLabelStyle}">✈️ Aéroports</div>
-                    <div style="${kpiValueStyle}">${airportCount.toLocaleString('fr-FR')}</div>
-                </div>
-            </div>
-            ${areaKm2 > 0 ? `<div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:12px;margin-bottom:10px;">
-                <div style="font-size:0.8rem;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:8px;">📍 Densité transport / km²</div>
-                <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;">
-                    <div style="text-align:center;"><div style="font-size:0.7rem;color:var(--color-text-muted);">🚌 Bus</div><div style="font-size:1rem;font-weight:700;color:#fbbf24;">${(busStopCount / areaKm2).toFixed(2)}</div></div>
-                    <div style="text-align:center;"><div style="font-size:0.7rem;color:var(--color-text-muted);">🚆 Gares</div><div style="font-size:1rem;font-weight:700;color:#8b5cf6;">${(trainStationCount / areaKm2).toFixed(2)}</div></div>
-                    <div style="text-align:center;"><div style="font-size:0.7rem;color:var(--color-text-muted);">✈️ Aéro.</div><div style="font-size:1rem;font-weight:700;color:#0ea5e9;">${(airportCount / areaKm2).toFixed(2)}</div></div>
-                </div>
-            </div>` : ''}
-            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:10px;">
-                <div class="kpi-card glass-panel" style="${kpiCardStyle}border-color:rgba(100,116,139,0.35);background:rgba(100,116,139,0.08);flex-direction:column;align-items:flex-start;">
-                    <div style="${kpiLabelStyle}">🅿️ Stationnements</div>
-                    <div style="${kpiValueStyle}">${parkingCount.toLocaleString('fr-FR')}</div>
-                </div>
-                <div class="kpi-card glass-panel" style="${kpiCardStyle}border-color:rgba(6,182,212,0.35);background:rgba(6,182,212,0.08);flex-direction:column;align-items:flex-start;">
-                    <div style="${kpiLabelStyle}">🚻 Équipements sanitaires</div>
-                    <div style="${kpiValueStyle}">${sanitaryCount.toLocaleString('fr-FR')}</div>
-                </div>
-                <div class="kpi-card glass-panel" style="${kpiCardStyle}border-color:rgba(34,197,94,0.35);background:rgba(34,197,94,0.08);flex-direction:column;align-items:flex-start;">
-                    <div style="${kpiLabelStyle}">🔌 Bornes de recharge</div>
-                    <div style="${kpiValueStyle}">${chargingCount.toLocaleString('fr-FR')}</div>
-                </div>
-            </div>
-            <div id="section-infra-content"></div>
-        `;
+        const infraKpisHtml = buildInfraKpis() + `<div id="section-infra-content"></div>`;
         this.macroStats.innerHTML =
             buildCollapsibleSection('Informations générales', '📊', section1Html, 'section-info', true) +
             buildCollapsibleSection('Infrastructure \& activités', '🗺️', infraKpisHtml, 'section-infra', true) +
@@ -1693,15 +1586,10 @@ export class UiRenderer {
 
         // Header for Chart + Maximize Button
         const chartHeader = document.createElement('div');
-        chartHeader.style.display = 'flex';
-        chartHeader.style.justifyContent = 'space-between';
-        chartHeader.style.alignItems = 'center';
-        chartHeader.style.marginBottom = '5px';
+        chartHeader.className = 'mini-treemap-header';
 
         const chartTitle = document.createElement('span');
-        chartTitle.style.fontSize = '0.9rem';
-        chartTitle.style.fontWeight = '600';
-        chartTitle.style.color = '#fff';
+        chartTitle.className = 'mini-treemap-title';
         chartTitle.textContent = 'Répartition';
 
         const maxBtn = document.createElement('button');
@@ -1717,7 +1605,7 @@ export class UiRenderer {
         infraContainer.appendChild(chartHeader);
 
         const chartDiv = document.createElement('div');
-        chartDiv.style.height = '350px';
+        chartDiv.style.height = '300px';
         chartDiv.id = 'mini-chart-div';
         infraContainer.appendChild(chartDiv);
 
@@ -1734,22 +1622,21 @@ export class UiRenderer {
         const miniConfig = { responsive: true, displayModeBar: false };
 
         const addMiniTreemap = (titleText, emoji, treemapData) => {
-            if (!treemapData || treemapData.values.length <= 1) return; // Rien à afficher
+            if (!treemapData || treemapData.values.length <= 1) return;
 
             const section = document.createElement('div');
-            section.style.cssText = 'margin-top:16px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:12px;';
+            section.className = 'mini-treemap-section';
 
-            // Header + bouton Agrandir
             const headerRow = document.createElement('div');
-            headerRow.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;';
+            headerRow.className = 'mini-treemap-header';
 
             const header = document.createElement('span');
-            header.style.cssText = 'font-size:0.8rem;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:0.04em;';
+            header.className = 'mini-treemap-title';
             header.textContent = `${emoji} ${titleText}`;
             headerRow.appendChild(header);
 
             const miniDiv = document.createElement('div');
-            miniDiv.style.height = '220px';
+            miniDiv.style.height = '200px';
 
             const plotData = [{
                 type: 'treemap',
@@ -1890,19 +1777,18 @@ export class UiRenderer {
         const totalTrails = pedestrianTrailCount + cyclingTrailCount;
         if (totalTrails > 0) {
             const slopeSection = document.createElement('div');
-            slopeSection.style.cssText = 'margin-top:16px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:12px;';
+            slopeSection.className = 'mini-treemap-section';
 
-            // Header + bouton Agrandir
             const slopeHeaderRow = document.createElement('div');
-            slopeHeaderRow.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;';
+            slopeHeaderRow.className = 'mini-treemap-header';
 
             const slopeHeader = document.createElement('span');
-            slopeHeader.style.cssText = 'font-size:0.8rem;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:0.04em;';
-            slopeHeader.textContent = '📊 Slope Chart — Randonnée vs Cyclisme';
+            slopeHeader.className = 'mini-treemap-title';
+            slopeHeader.textContent = '📊 Randonnée vs Cyclisme';
             slopeHeaderRow.appendChild(slopeHeader);
 
             const slopeDiv = document.createElement('div');
-            slopeDiv.style.height = '200px';
+            slopeDiv.style.height = '180px';
 
             // Slope line color based on dominant side
             let slopeColor;
