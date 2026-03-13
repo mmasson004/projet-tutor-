@@ -496,7 +496,7 @@ export class UiRenderer {
             const isFr = this.apiService?.currentCountryCode === 'fr';
             adminType = isFr && adminLevel === '4' ? 'region'
                 : isFr && adminLevel === '6' ? 'dept'
-                : 'admin';
+                    : 'admin';
         }
 
         container.innerHTML = '';
@@ -769,9 +769,27 @@ export class UiRenderer {
 
         if (this.deselectAllBtn) {
             this.deselectAllBtn.addEventListener('click', () => {
-                const inputs = this.macroFiltersContent.querySelectorAll('input[type="checkbox"]');
-                const anyChecked = Array.from(inputs).some(i => i.checked);
-                inputs.forEach(input => input.checked = !anyChecked);
+                const mainCheckboxes = this.macroFiltersContent.querySelectorAll(':scope > div > div > label > input[type="checkbox"]');
+                const anyChecked = Array.from(mainCheckboxes).some(i => i.checked);
+                const newState = !anyChecked;
+
+                mainCheckboxes.forEach(checkbox => {
+                    checkbox.checked = newState;
+                    // Trigger manual change to sync sub-categories
+                    const wrapper = checkbox.closest('[data-cat-id]');
+                    const subContainer = wrapper ? wrapper.querySelector('.sub-cat-list') : null;
+                    if (subContainer) {
+                        subContainer.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+                            cb.checked = newState;
+                            if (!newState) {
+                                this.excludedSubCategories.add(cb.value);
+                            } else {
+                                this.excludedSubCategories.delete(cb.value);
+                            }
+                        });
+                    }
+                });
+
                 this.updateFilterButtonText();
                 if (this.onFilterChange) this.onFilterChange();
             });
@@ -1298,7 +1316,7 @@ export class UiRenderer {
                     <div style="margin-top:12px; font-size:0.75rem; width:100%;">
                         <div style="color:var(--color-text-muted); margin-bottom:4px;">⭐ Répartition par étoiles (UNIT_LOC pour I551 et I553 pour chaque étoile 1 à 5 et NC) :</div>
                         <div style="display:flex; gap:6px; flex-wrap:wrap;">
-                            ${Object.entries(inseeStats.hotel_stars).filter(([k,v]) => v > 0).map(([k,v]) => `<span style="background:rgba(251,191,36,0.2);color:#fcd34d;padding:2px 6px;border-radius:4px;">${k === 'NC' ? 'Non Classé' : k + '⭐'}: ${v}</span>`).join('') || '<span style="color:var(--color-text-muted);">Aucun classé</span>'}
+                            ${Object.entries(inseeStats.hotel_stars).filter(([k, v]) => v > 0).map(([k, v]) => `<span style="background:rgba(251,191,36,0.2);color:#fcd34d;padding:2px 6px;border-radius:4px;">${k === 'NC' ? 'Non Classé' : k + '⭐'}: ${v}</span>`).join('') || '<span style="color:var(--color-text-muted);">Aucun classé</span>'}
                         </div>
                     </div>
                 </div>
@@ -1515,6 +1533,7 @@ export class UiRenderer {
                 </div>`;
             this._bindCollapsibleSections();
             this._bindHeatmapToggles();
+            this.lastPois = pois; // SYNC: Even if empty, update lastPois reference
             if (totalRaw > 0) {
                 this.showToast(`🗺️ ${countLabel} — activez les filtres pour les afficher`, 'info', 5000);
             }
@@ -1965,7 +1984,7 @@ export class UiRenderer {
             return;
         }
 
-        // C'est ici que la ligne fautive a été supprimée !
+        this.lastPois = pois; // SYNC: Update the source of truth for the list
 
         this.poiList.innerHTML = pois.map(poi => this.createPoiCard(poi)).join('');
         this.poiList.querySelectorAll('.poi-card').forEach(card => {
@@ -2165,29 +2184,29 @@ export class UiRenderer {
     _buildDigitalRows(poi, color) {
         const d = poi.digital || {};
         const rows = [];
-        
+
         const yesLabel = `<span style="color:#10b981;font-weight:bold;">Oui</span>`;
         const noLabel = `<span style="color:var(--color-text-muted);opacity:0.8;">Non</span>`;
-        
+
         rows.push(this._infoRow('🌐 Site Web', d.hasWebsite ? yesLabel : noLabel));
         rows.push(this._infoRow('📱 Réseaux Sociaux', d.hasSocialMedia ? yesLabel : noLabel));
         rows.push(this._infoRow('🎒 Wikivoyage', d.hasWikivoyage ? yesLabel : noLabel));
-        
+
         let langLabel = '';
         if (d.wikidataLanguagesCount === null || d.wikidataLanguagesCount === undefined) {
-             if (poi.tags.wikidata) {
-                  langLabel = `<span style="color:var(--color-text-muted);font-style:italic;">Chargement...</span>`;
-             } else {
-                  langLabel = noLabel;
-             }
+            if (poi.tags.wikidata) {
+                langLabel = `<span style="color:var(--color-text-muted);font-style:italic;">Chargement...</span>`;
+            } else {
+                langLabel = noLabel;
+            }
         } else if (d.wikidataLanguagesCount === 0) {
-             langLabel = noLabel;
+            langLabel = noLabel;
         } else {
-             langLabel = `<span style="color:${color};font-weight:bold;">${d.wikidataLanguagesCount} langue(s)</span>`;
+            langLabel = `<span style="color:${color};font-weight:bold;">${d.wikidataLanguagesCount} langue(s)</span>`;
         }
-        
+
         rows.push(this._infoRow('🌍 Langues', langLabel));
-        
+
         return rows.join('');
     }
 
@@ -2333,7 +2352,7 @@ export class UiRenderer {
         if (searchQuery.length > 0) {
             filtered = filtered.filter(p =>
                 p.name.toLowerCase().includes(searchQuery) ||
-                (p.tags.type && p.tags.type.toLowerCase().includes(searchQuery))
+                (p.type && p.type.toLowerCase().includes(searchQuery))
             );
         }
 
